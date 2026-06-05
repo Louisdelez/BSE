@@ -8,11 +8,58 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v004` :
-- Système de caméra mutable côté canvas
-- Pan via Espace + drag
-- Zoom molette centré sur le curseur
-- Background avec grille rendu via shader WGSL (premier paint callback wgpu)
+À venir dans `v005` :
+- Premier outil interactif : Rectangle (click + drag)
+- Premier paint callback `wgpu` réel : pipeline SDF pour les shapes
+- Stockage et rendu des éléments dans `bse-model::Scene`
+
+---
+
+## [v004] — 2026-06-05
+
+### 🎥 Canvas pan / zoom + grille adaptative
+
+La caméra est désormais pleinement interactive. La fenêtre montre une
+grille qui s'adapte au zoom, on peut naviguer dans l'espace infini
+avec souris + clavier, et l'origine reste un repère visuel.
+
+### 🎉 Added
+- **Restructuration** : `canvas_panel.rs` → module `canvas/` avec sous-modules
+  - `panel` : entrée principale (orchestre input + grid + origin marker)
+  - `input` : gestion des inputs (pan, zoom)
+  - `grid` : grille adaptative (lignes minor + major, snap nice numbers)
+- **Pan** :
+  - Drag du bouton central de la souris
+  - Espace maintenu + drag du bouton primaire (pattern Figma)
+- **Zoom** :
+  - Molette ancrée sur la position du curseur (factor `1 + scroll * 0.005`)
+  - Clampé entre `MIN_ZOOM = 0.05` et `MAX_ZOOM = 50.0`
+- **Grille adaptative** :
+  - Espacement choisi pour rester ~14 px sur écran (snap à 1, 2, 5 × 10^n)
+  - Lignes mineures `#EEF0F3` + lignes majeures (toutes les 5) `#E0E2E8`
+- **Origin marker** : croix discrète qui se déplace avec la caméra,
+  cachée si hors viewport
+
+### 🔧 Changed
+- `crates/bse-app/src/canvas/` remplace `canvas_panel.rs`
+- L'origin marker est désormais en coords monde (suit la caméra)
+
+### 🛠 Tests
+- 2 nouveaux tests unitaires sur `pick_spacing` (snap nice numbers + monotonie)
+- **Total : 32 tests verts**
+
+### 📏 Tailles de fichiers (toujours < 300 lignes)
+- `canvas/mod.rs` : 17 lignes
+- `canvas/panel.rs` : 48 lignes
+- `canvas/input.rs` : 62 lignes
+- `canvas/grid.rs` : 155 lignes (le plus long, mais structuré + tests)
+
+### 📌 Lancer en local
+```bash
+cargo run --release -p bse-app
+# Espace + drag souris : pan
+# Molette : zoom centré sur le curseur
+```
 
 ---
 

@@ -8,7 +8,7 @@ use bse_ui::{StatusInfo, status_bar, toolbar};
 use eframe::egui;
 
 use crate::APP_INFO;
-use crate::canvas_panel;
+use crate::canvas;
 
 /// Root application state.
 pub struct BseApp {
@@ -39,7 +39,6 @@ impl BseApp {
         if let Some(prev) = self.last_frame {
             let dt = now.duration_since(prev).as_secs_f32();
             if dt > 0.0 {
-                // Exponential moving average so the readout isn't jittery.
                 let instant = 1.0 / dt;
                 self.fps = self.fps.mul_add(0.9, instant * 0.1);
             }
@@ -70,10 +69,9 @@ impl eframe::App for BseApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            canvas_panel::show(ui, &mut self.canvas);
+            canvas::show(ui, &mut self.canvas);
         });
 
-        // Request continuous repaint so the FPS counter and animations stay live.
         ctx.request_repaint();
     }
 }
