@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 axum = { version = "0.7", features = ["ws"] }
+bse-auth.workspace = true
 bse-protocol.workspace = true
 bse-types.workspace = true
 serde = { workspace = true }

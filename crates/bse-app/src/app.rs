@@ -7,6 +7,7 @@
 
 use std::time::{Duration, Instant};
 
+use bse_auth::SessionState;
 use bse_canvas::CanvasState;
 use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_spatial::Quadtree;
@@ -20,6 +21,7 @@ use tracing::{info, warn};
 use crate::APP_INFO;
 use crate::assets::AssetStore;
 use crate::canvas;
+use crate::login::{self, LoginForm};
 use crate::peers::PeerStore;
 use crate::project_io;
 use crate::sync_thread::{SyncCmd, SyncEvent, SyncHandle};
@@ -61,6 +63,13 @@ pub struct BseApp {
     local_peer_id: PeerId,
     /// Last cursor position emitted to the sync thread (world coords).
     last_emitted_cursor: Option<WorldVec2>,
+    /// Current login state. `SignedOut` triggers the login modal.
+    session: SessionState,
+    /// Backing state for the login form widget.
+    login_form: LoginForm,
+    /// Cached HTTP base of the server (`ws://` → `http://`). Empty when
+    /// no `BSE_SERVER_URL` is configured.
+    server_http_base: String,
 }
 
 impl Default for BseApp {
@@ -101,6 +110,20 @@ impl BseApp {
         }
         let elements = crdt.element_count();
         let local_peer_id = PeerId::new();
+        let server_url = std::env::var("BSE_SERVER_URL").unwrap_or_default();
+        let server_http_base = if server_url.is_empty() {
+            String::new()
+        } else {
+            server_url
+                .replacen("ws://", "http://", 1)
+                .replacen("wss://", "https://", 1)
+                .trim_end_matches('/')
+                .to_string()
+        };
+        let session = storage
+            .as_ref()
+            .and_then(login::load_session)
+            .unwrap_or_default();
         let sync = spawn_sync_if_configured(local_peer_id);
         Self {
             canvas: CanvasState::new(),
@@ -119,6 +142,9 @@ impl BseApp {
             peers: PeerStore::new(),
             local_peer_id,
             last_emitted_cursor: None,
+            session,
+            login_form: LoginForm::default(),
+            server_http_base,
         }
     }
 
@@ -249,6 +275,26 @@ impl BseApp {
         self.peers.prune_stale();
     }
 
+    /// Show the login modal if the user is signed out AND a server is
+    /// configured. Without a server URL there is nobody to authenticate
+    /// against, so we silently stay offline.
+    fn maybe_show_login(&mut self, ctx: &egui::Context) {
+        if self.session.is_signed_in() || self.server_http_base.is_empty() {
+            return;
+        }
+        if let Some(new_state) =
+            login::show_modal(ctx, &mut self.login_form, &self.server_http_base)
+        {
+            self.session = new_state;
+            if let Some(storage) = self.storage.as_mut() {
+                login::persist_session(storage, &self.session);
+            }
+            if let SessionState::SignedIn { display_name, .. } = &self.session {
+                info!(target: "bse::app", user = %display_name, "session established");
+            }
+        }
+    }
+
     /// Read the local cursor screen position and forward it to the
     /// worker thread so it is broadcast as awareness.
     fn emit_local_cursor(&mut self, ctx: &egui::Context, canvas_rect: egui::Rect) {
@@ -319,6 +365,7 @@ impl eframe::App for BseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
         self.process_sync_events();
+        self.maybe_show_login(ctx);
         self.handle_file_shortcuts(ctx);
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();
