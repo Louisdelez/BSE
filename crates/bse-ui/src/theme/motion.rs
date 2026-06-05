@@ -7,6 +7,8 @@
 
 use std::time::Duration;
 
+use eframe::egui::Context;
+
 // ─── Durations ───────────────────────────────────────────────────────────────
 
 /// Hover / focus transitions. Below 100ms the change is invisible ;
@@ -44,6 +46,34 @@ pub const SPRING_DEFAULT_DAMPING: f32 = 20.0;
 pub const SPRING_FAST_STIFFNESS: f32 = 500.0;
 /// Fast spring damping — pairs with [`SPRING_FAST_STIFFNESS`].
 pub const SPRING_FAST_DAMPING: f32 = 30.0;
+
+// ─── Reduced motion ──────────────────────────────────────────────────────────
+
+/// `true` when the user (or OS) prefers reduced motion. Animations
+/// should fall back to opacity-only transitions at most.
+///
+/// egui exposes the OS pref via `Style.animation_time = 0` ; we mirror
+/// that as the canonical signal here, plus an opt-in env var
+/// (`BSE_REDUCE_MOTION=1`) for testing.
+#[must_use]
+pub fn prefers_reduced_motion(ctx: &Context) -> bool {
+    if std::env::var("BSE_REDUCE_MOTION").as_deref() == Ok("1") {
+        return true;
+    }
+    ctx.style().animation_time <= 0.001
+}
+
+/// Return the duration that should actually be used, taking
+/// `prefers_reduced_motion` into account. Reduced motion collapses
+/// every duration to at most 100 ms.
+#[must_use]
+pub fn effective(ctx: &Context, d: Duration) -> Duration {
+    if prefers_reduced_motion(ctx) {
+        d.min(Duration::from_millis(100))
+    } else {
+        d
+    }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -108,8 +108,8 @@ pub const SUCCESS: Color32 = Color32::from_rgb(0x00, 0xB4, 0x73);
 pub const ERROR_LIGHT: Color32 = Color32::from_rgb(0xFB, 0xD4, 0xD4);
 /// `#e3c5c5` — Stronger red for error borders.
 pub const ERROR_BORDER: Color32 = Color32::from_rgb(0xE3, 0xC5, 0xC5);
-/// `#e63a46` — Inline error text.
-pub const ERROR_TEXT: Color32 = Color32::from_rgb(0xE6, 0x3A, 0x46);
+/// `#b91c1c` — Inline error text (Tailwind red-700 ; clears WCAG AA on CANVAS).
+pub const ERROR_TEXT: Color32 = Color32::from_rgb(0xB9, 0x1C, 0x1C);
 /// `#e69a00` — Warning / reconnecting indicator.
 pub const WARNING: Color32 = Color32::from_rgb(0xE6, 0x9A, 0x00);
 
@@ -125,3 +125,53 @@ pub const DARK_SURFACE_2: Color32 = Color32::from_rgb(0x27, 0x27, 0x2A);
 pub const DARK_HAIRLINE: Color32 = Color32::from_rgb(0x2E, 0x2E, 0x33);
 /// Slightly desaturated brand yellow for dark mode (avoid glow).
 pub const DARK_BRAND_YELLOW: Color32 = Color32::from_rgb(0xD9, 0xB1, 0x28);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WCAG 2.1 relative luminance (linearized sRGB).
+    fn luminance(c: Color32) -> f32 {
+        fn channel(v: u8) -> f32 {
+            let f = f32::from(v) / 255.0;
+            if f <= 0.039_28 {
+                f / 12.92
+            } else {
+                ((f + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+    }
+
+    fn contrast(fg: Color32, bg: Color32) -> f32 {
+        let l1 = luminance(fg).max(luminance(bg));
+        let l2 = luminance(fg).min(luminance(bg));
+        (l1 + 0.05) / (l2 + 0.05)
+    }
+
+    fn assert_aa(fg: Color32, bg: Color32, label: &str) {
+        let ratio = contrast(fg, bg);
+        assert!(
+            ratio >= 4.5,
+            "{label}: contrast {ratio:.2}:1 is below WCAG AA (4.5:1)"
+        );
+    }
+
+    /// Pairings used by the chrome must clear WCAG AA (4.5:1).
+    #[test]
+    fn light_mode_contrast_aa() {
+        assert_aa(INK, CANVAS, "INK on CANVAS");
+        assert_aa(SLATE, CANVAS, "SLATE on CANVAS");
+        assert_aa(INK, BRAND_YELLOW, "INK on BRAND_YELLOW");
+        assert_aa(ON_DARK, INK, "ON_DARK on INK (primary CTA)");
+        assert_aa(ERROR_TEXT, CANVAS, "ERROR_TEXT on CANVAS");
+        assert_aa(MOSS_DARK, TEAL_LIGHT, "MOSS_DARK on TEAL_LIGHT");
+    }
+
+    #[test]
+    fn dark_mode_contrast_aa() {
+        assert_aa(ON_DARK, DARK_CANVAS, "ON_DARK on DARK_CANVAS");
+        assert_aa(ON_DARK, DARK_SURFACE, "ON_DARK on DARK_SURFACE");
+        assert_aa(INK, DARK_BRAND_YELLOW, "INK on DARK_BRAND_YELLOW");
+    }
+}
