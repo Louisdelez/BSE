@@ -4,8 +4,9 @@
 > Desktop natif en **Rust**. Performant. Auto-hébergeable. Open-source.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Status: Documentation](https://img.shields.io/badge/Status-Documentation-blue.svg)](./docs)
-[![Version: v001](https://img.shields.io/badge/Version-v001-green.svg)](./CHANGELOG.md)
+[![Status: Scaffolding](https://img.shields.io/badge/Status-Scaffolding-blue.svg)](./docs)
+[![Version: v002](https://img.shields.io/badge/Version-v002-green.svg)](./CHANGELOG.md)
+[![CI](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml/badge.svg)](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/lang-Rust-orange.svg)](https://www.rust-lang.org)
 
 ---
@@ -27,10 +28,27 @@ BSE permet à plusieurs personnes de **brainstormer ensemble en temps réel** su
 
 ## 📦 État du projet
 
-> **BSE est en phase de documentation initiale (v001).**
-> Le code source viendra dans les prochains paliers (v002+).
+> **v002 — Cargo workspace scaffoldé.**
+> 11 crates Rust, build clean, 30 tests verts, CI multi-OS. La fenêtre desktop arrive en v003.
 
 Voir la [roadmap complète](./docs/00-VUE-ENSEMBLE/04-roadmap.md) et le [CHANGELOG](./CHANGELOG.md).
+
+### 🚀 Compiler et lancer
+
+```bash
+# Requis : Rust 1.94+ (rustup recommandé)
+cargo build --release
+cargo run --release -p bse-app       # binaire client (smoke test en v002)
+cargo run --release -p bse-server    # binaire serveur (smoke test en v002)
+```
+
+### 🧪 Vérifier la qualité
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
 
 ## 🗂️ Documentation
 

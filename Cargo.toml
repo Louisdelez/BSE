@@ -1,0 +1,66 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bse-types",
+    "crates/bse-protocol",
+    "crates/bse-model",
+    "crates/bse-crdt",
+    "crates/bse-render",
+    "crates/bse-canvas",
+    "crates/bse-storage",
+    "crates/bse-sync",
+    "crates/bse-ui",
+    "crates/bse-app",
+    "crates/bse-server",
+]
+
+[workspace.package]
+version = "0.0.2"
+edition = "2024"
+rust-version = "1.94"
+authors = ["Louis Delez <loicdelez.ch@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/Louisdelez/BSE"
+homepage = "https://github.com/Louisdelez/BSE"
+readme = "README.md"
+keywords = ["brainstorming", "canvas", "collaboration", "crdt", "whiteboard"]
+categories = ["graphics", "gui", "multimedia"]
+
+[workspace.dependencies]
+# Internal crates
+bse-types = { path = "crates/bse-types" }
+bse-protocol = { path = "crates/bse-protocol" }
+bse-model = { path = "crates/bse-model" }
+bse-crdt = { path = "crates/bse-crdt" }
+bse-render = { path = "crates/bse-render" }
+bse-canvas = { path = "crates/bse-canvas" }
+bse-storage = { path = "crates/bse-storage" }
+bse-sync = { path = "crates/bse-sync" }
+bse-ui = { path = "crates/bse-ui" }
+
+# Foundation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+bytes = "1"
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.29", features = ["serde", "bytemuck"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release-fast]
+inherits = "release"
+lto = "off"
+codegen-units = 16

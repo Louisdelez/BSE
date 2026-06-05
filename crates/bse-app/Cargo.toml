@@ -1,0 +1,30 @@
+[package]
+name = "bse-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "BSE desktop application binary."
+
+[[bin]]
+name = "bse"
+path = "src/main.rs"
+
+[dependencies]
+bse-canvas.workspace = true
+bse-crdt.workspace = true
+bse-model.workspace = true
+bse-render.workspace = true
+bse-types.workspace = true
+bse-ui.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

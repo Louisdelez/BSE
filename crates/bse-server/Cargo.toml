@@ -1,0 +1,26 @@
+[package]
+name = "bse-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "BSE collaboration server binary."
+
+[[bin]]
+name = "bse-server"
+path = "src/main.rs"
+
+[dependencies]
+bse-protocol.workspace = true
+bse-types.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

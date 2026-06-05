@@ -8,17 +8,64 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
+À venir dans `v003` :
+- Fenêtre desktop avec eframe + wgpu
+- Toolbar egui minimale
+- Background rendu via wgpu paint callback
+
+---
+
+## [v002] — 2026-06-05
+
+### 🎉 Cargo workspace fonctionnel
+
+Premier palier de code de BSE. Le workspace Rust est entièrement scaffoldé,
+compile sans erreur ni warning, passe `cargo clippy -- -D warnings` et
+expose 30 tests verts.
+
+### 🛠 Infrastructure
+- **Workspace Cargo** avec 11 crates, edition 2024, toolchain pinné à 1.94
+- **Profils** : `dev`, `release` (LTO thin, codegen-units 1), `release-fast`
+- **Configs** : `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `.editorconfig`
+- **CI GitHub Actions** matrix Windows / macOS / Linux : fmt, clippy, test, doc
+- **Dependabot** weekly pour cargo + monthly pour github-actions
+- **Templates** PR + issue (bug, feature)
+
+### 🎉 Added — 11 crates
+| Crate | Rôle | Lignes |
+|---|---|---|
+| `bse-types` | Geometry (Vec2, Rect, Transform), IDs typés, Color | ~600 |
+| `bse-protocol` | Wire protocol client/server (Client/ServerMessage) | ~150 |
+| `bse-model` | Domain : Element, Scene, Camera, Style | ~400 |
+| `bse-crdt` | Trait `CrdtBackend` + placeholder `InMemoryBackend` | ~110 |
+| `bse-render` | Trait `Renderer` + `NullRenderer` + `FrameStats` | ~75 |
+| `bse-canvas` | `CanvasState`, `ToolKind` | ~50 |
+| `bse-storage` | Trait `LocalStorage` | ~35 |
+| `bse-sync` | `ConnectionState`, `SyncError` | ~45 |
+| `bse-ui` | `AppInfo` | ~25 |
+| `bse-app` | Binaire `bse` (smoke test v002) | ~45 |
+| `bse-server` | Binaire `bse-server` (smoke test v002) | ~25 |
+
+### ✅ Qualité
+- `cargo check --workspace` ✓
+- `cargo clippy --workspace --all-targets -- -D warnings` ✓ (pedantic enabled)
+- `cargo fmt --all -- --check` ✓
+- `cargo test --workspace` ✓ — **30 tests verts** (21 dans bse-types, 9 dans bse-model)
+- `cargo doc --workspace --no-deps` ✓
+- Aucun fichier > 300 lignes
+- Documentation `///` sur tous les items publics
+- Conventions Rust 2024 idiomatiques (`self` by value sur méthodes `to_*` Copy, etc.)
+
+### 📌 Out of scope (intentionnel)
+- `wgpu` / `eframe` arrivent en v003
+- `yrs` arrive en v009
+- `tokio` / `axum` arrivent en v008
+- `sqlx` arrive en v011
+
 ### 📚 Documentation
 - **Design system Miro adopté** via `npx getdesign@latest add miro`
-  - Nouveau fichier `DESIGN.md` à la racine (724 lignes) — source de vérité des tokens visuels
-  - Nouveau fichier `docs/08-UX-UI/05-design-system.md` — documentation du choix
-  - `docs/08-UX-UI/01-principes-design.md` mis à jour : délègue les tokens à DESIGN.md
-  - `docs/README.md` et `README.md` mis à jour pour référencer DESIGN.md
-
-À venir dans `v002` :
-- Cargo workspace structuré
-- Hello world fenêtre wgpu + winit + egui
-- CI Windows / macOS / Linux
+  - Nouveau fichier `DESIGN.md` à la racine (724 lignes)
+  - Nouveau fichier `docs/08-UX-UI/05-design-system.md`
 
 ---
 

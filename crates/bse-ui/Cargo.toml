@@ -1,0 +1,21 @@
+[package]
+name = "bse-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reusable egui-based UI components for the BSE app."
+
+[dependencies]
+bse-canvas.workspace = true
+bse-model.workspace = true
+bse-types.workspace = true
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

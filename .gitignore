@@ -69,3 +69,7 @@ dhat-*.json
 *.tmp
 tmp/
 temp/
+.commitmsg.tmp
+.tagmsg.tmp
+.releasenotes.tmp
+.clippy-out.tmp
