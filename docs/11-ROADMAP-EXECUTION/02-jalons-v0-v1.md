@@ -2,6 +2,48 @@
 
 > Le détail des releases entre MVP et v1.0 stable.
 
+## Milestones livrés (v018 → v025)
+
+### Track "Production readiness" — livré
+
+| Tag | Contenu | Statut |
+|---|---|---|
+| v018 | Server-side SQLite persistence (users + room snapshots) | ✅ |
+| v019 | Reconnect client avec backoff exponentiel + op queue | ✅ |
+| v020 | Refresh tokens + sign-out + sign-up + auto-refresh | ✅ |
+| v021 | Per-room ACL (owner/member) + room picker UI | ✅ |
+| v022 | Rate limiting + body limit + CORS strict + security headers | ✅ |
+| v023 | Yrs incremental updates (bandwidth × 10-20 gains) | ✅ |
+| v024 | Dockerfile + docker-compose + Caddy TLS + DEPLOYMENT.md + release CI | ✅ |
+| v025 | UX polish : connection badge + in-app member invite | ✅ |
+
+Avec v018-v025, BSE est déployable en production : `docker compose up -d`
+sur un host avec DNS pointant dessus → instance HTTPS prête à l'emploi.
+
+## Track "UI modernization" — en cours (v026 → v035)
+
+Voir [`docs/08-UX-UI/06-implementation-egui.md`](../08-UX-UI/06-implementation-egui.md)
+pour la stratégie technique complète.
+
+Objectif : atteindre un look Miro/Linear-grade en restant sur egui +
+eframe + wgpu, sans toucher au reste du codebase (server, CRDT, sync,
+auth, canvas wgpu).
+
+| Tag | Contenu | Statut |
+|---|---|---|
+| v026 | Theme foundation : Inter font + Phosphor + apply_bse_theme + tokens Miro | ⏳ |
+| v027 | Composants core : PillButton, Card, Modal (animations comprises) | ⏳ |
+| v028 | Refactor login modal avec nouveau theme + composants | ⏳ |
+| v029 | Refactor room picker en cards Miro-style + list_item | ⏳ |
+| v030 | Floating toolbar (style tldraw) + icônes Phosphor + animations | ⏳ |
+| v031 | Status bar polish + StatusPill + Avatar (présence) | ⏳ |
+| v032 | Notifications via egui-notify (sign-in, invites, sync errors) | ⏳ |
+| v033 | Command palette (Cmd+K) — port depuis re_ui | ⏳ |
+| v034 | Hot-reload des tokens RON (cfg-gated, dev only) — port depuis re_ui | ⏳ |
+| v035 | Pass final : prefers-reduced-motion + accessibilité + tests visuels | ⏳ |
+
+## v0.1 — Beta privée (M3 → M5, 2 mois post-MVP)
+
 ## v0.1 — Beta privée (M3 → M5, 2 mois post-MVP)
 
 ### Périmètre additionnel
