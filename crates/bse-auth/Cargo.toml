@@ -1,0 +1,30 @@
+[package]
+name = "bse-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Authentication primitives for BSE : JWT, password hashing, session state."
+
+[dependencies]
+bse-types.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+argon2 = { version = "0.5", features = ["std"] }
+jsonwebtoken = "9"
+# `password-hash` is re-exported through `argon2::password_hash`, but
+# `OsRng` is gated behind its `getrandom` feature. Listed as a direct
+# dependency just to enable that feature flag.
+password-hash = { version = "0.5", features = ["getrandom"] }
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

@@ -13,11 +13,9 @@ members = [
     "crates/bse-pen",
     "crates/bse-spatial",
     "crates/bse-projects",
+    "crates/bse-auth",
     "crates/bse-app",
     "crates/bse-server",
-]
-exclude = [
-    "crates/bse-auth",  # added in v016
 ]
 
 [workspace.package]
