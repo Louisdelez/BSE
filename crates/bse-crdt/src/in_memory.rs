@@ -59,6 +59,12 @@ impl CrdtBackend for InMemoryBackend {
         ))
     }
 
+    fn state_vector(&self) -> Result<Vec<u8>, CrdtError> {
+        Err(CrdtError::NotImplemented(
+            "state vector encoding lands with yrs in v023",
+        ))
+    }
+
     fn apply_remote_update(&mut self, _bytes: &[u8]) -> Result<(), CrdtError> {
         Err(CrdtError::NotImplemented(
             "remote updates land with yrs in v009",

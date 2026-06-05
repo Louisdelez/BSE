@@ -33,6 +33,23 @@ pub trait CrdtBackend: Send + Sync + 'static {
     /// Encode the full state for sharing with a new peer.
     fn encode_snapshot(&self) -> Result<Vec<u8>, CrdtError>;
 
+    /// Encode the document's current state vector. This is what a
+    /// remote peer sends back so we can ship them an *incremental*
+    /// update (see [`Self::encode_update_since`]) rather than the
+    /// whole document.
+    fn state_vector(&self) -> Result<Vec<u8>, CrdtError>;
+
+    /// Encode the bytes needed to bring a peer with the given
+    /// state vector up to date. The default implementation falls
+    /// back to a full snapshot ; the Yrs backend overrides it with
+    /// a real incremental update.
+    ///
+    /// Pass an empty slice to fall back to a full snapshot.
+    fn encode_update_since(&self, remote_sv: &[u8]) -> Result<Vec<u8>, CrdtError> {
+        let _ = remote_sv;
+        self.encode_snapshot()
+    }
+
     /// Apply a binary update produced by another peer.
     fn apply_remote_update(&mut self, bytes: &[u8]) -> Result<(), CrdtError>;
 }

@@ -35,6 +35,7 @@
 use bse_model::Element;
 use bse_types::ElementId;
 use yrs::updates::decoder::Decode;
+use yrs::updates::encoder::Encode;
 use yrs::{Any, Doc, Map, MapRef, Out, ReadTxn, StateVector, Transact, TransactionMut, Update};
 
 use crate::backend::CrdtBackend;
@@ -170,6 +171,21 @@ impl CrdtBackend for YrsBackend {
         Ok(bytes)
     }
 
+    fn state_vector(&self) -> Result<Vec<u8>, CrdtError> {
+        let txn = self.doc.transact();
+        Ok(txn.state_vector().encode_v2())
+    }
+
+    fn encode_update_since(&self, remote_sv: &[u8]) -> Result<Vec<u8>, CrdtError> {
+        // Empty input → caller wants the full snapshot.
+        if remote_sv.is_empty() {
+            return self.encode_snapshot();
+        }
+        let sv = StateVector::decode_v2(remote_sv).map_err(|_| CrdtError::MalformedUpdate)?;
+        let txn = self.doc.transact();
+        Ok(txn.encode_state_as_update_v2(&sv))
+    }
+
     fn apply_remote_update(&mut self, bytes: &[u8]) -> Result<(), CrdtError> {
         let update = Update::decode_v2(bytes).map_err(|_| CrdtError::MalformedUpdate)?;
         let mut txn = self.doc.transact_mut();
@@ -256,5 +272,48 @@ mod tests {
     fn get_missing_returns_none() {
         let backend = YrsBackend::new();
         assert!(backend.get_element(ElementId::new()).is_none());
+    }
+
+    #[test]
+    fn incremental_update_brings_peer_up_to_date() {
+        // Alice creates two rectangles. Bob initially has the first
+        // one (via a full snapshot) ; Alice then sends Bob only the
+        // *diff* covering the second one, and Bob's count goes from
+        // 1 to 2 without re-applying the first.
+        let mut alice = YrsBackend::with_client_id(1);
+        let r1 = make_rect(1.0, 1.0);
+        alice.upsert_element(r1.clone()).expect("upsert r1");
+
+        let mut bob = YrsBackend::with_client_id(2);
+        bob.apply_remote_update(&alice.encode_snapshot().expect("snapshot"))
+            .expect("bob applies snapshot");
+        assert_eq!(bob.element_count(), 1);
+
+        let bob_sv = bob.state_vector().expect("bob sv");
+        let r2 = make_rect(2.0, 3.0);
+        alice.upsert_element(r2.clone()).expect("upsert r2");
+        let diff = alice
+            .encode_update_since(&bob_sv)
+            .expect("incremental update");
+        // The incremental payload is significantly smaller than a full snapshot.
+        let full = alice.encode_snapshot().expect("full");
+        assert!(
+            diff.len() < full.len(),
+            "diff ({}) must be smaller than full snapshot ({})",
+            diff.len(),
+            full.len()
+        );
+
+        bob.apply_remote_update(&diff).expect("bob applies diff");
+        assert_eq!(bob.element_count(), 2);
+    }
+
+    #[test]
+    fn empty_state_vector_falls_back_to_full_snapshot() {
+        let mut backend = YrsBackend::new();
+        backend.upsert_element(make_rect(1.0, 1.0)).unwrap();
+        let snap = backend.encode_update_since(&[]).expect("falls back");
+        let full = backend.encode_snapshot().expect("full");
+        assert_eq!(snap.len(), full.len());
     }
 }
