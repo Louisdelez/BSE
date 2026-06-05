@@ -25,6 +25,7 @@ use crate::canvas;
 use crate::login::{self, LoginForm};
 use crate::peers::PeerStore;
 use crate::project_io;
+use crate::room_picker::RoomPicker;
 use crate::sync_thread::{SyncCmd, SyncEvent, SyncHandle};
 
 const SPATIAL_HALF_EXTENT: f32 = 1_000_000.0;
@@ -36,9 +37,6 @@ const AUTOSAVE_KEY: &str = "current-project";
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(5);
 
 const IMAGE_PIXEL_WARN: u32 = 4096;
-
-/// Default room name used when `BSE_ROOM` is not set.
-const DEFAULT_ROOM: &str = "lobby";
 
 /// Refresh the access token when it has less than this many seconds left.
 const REFRESH_LEAD_SECS: u64 = 60;
@@ -77,6 +75,13 @@ pub struct BseApp {
     /// `Some` while a background token-refresh request is in flight.
     /// Drains a fresh [`SessionState`] (or an error message) on completion.
     refresh_rx: Option<mpsc::Receiver<Result<SessionState, String>>>,
+    /// Room picker dialog state (v021).
+    room_picker: RoomPicker,
+    /// Room currently connected to. `None` until the user picks one
+    /// (or `BSE_ROOM` is set, which is treated as an implicit pick).
+    current_room: Option<String>,
+    /// Whether the picker is currently shown.
+    show_picker: bool,
 }
 
 impl Default for BseApp {
@@ -131,7 +136,9 @@ impl BseApp {
             .as_ref()
             .and_then(login::load_session)
             .unwrap_or_default();
-        let sync = spawn_sync_if_configured(local_peer_id, session.access_token().map(str::to_owned));
+        // Sync is now spawned lazily once a room is picked ; see
+        // `BseApp::ensure_sync_connected`.
+        let sync: Option<SyncHandle> = None;
         Self {
             canvas: CanvasState::new(),
             crdt,
@@ -153,6 +160,9 @@ impl BseApp {
             login_form: LoginForm::default(),
             server_http_base,
             refresh_rx: None,
+            room_picker: RoomPicker::new(),
+            current_room: std::env::var("BSE_ROOM").ok(),
+            show_picker: false,
         }
     }
 
@@ -387,7 +397,79 @@ impl BseApp {
             sync.send(SyncCmd::Disconnect);
         }
         self.peers.clear();
+        self.room_picker.reset();
+        // Keep `current_room` so that on re-login the user lands back
+        // in the same room without having to pick again, but only if
+        // it was originally provided via the env var.
+        if std::env::var("BSE_ROOM").is_err() {
+            self.current_room = None;
+        }
         info!(target: "bse::auth", "signed out");
+    }
+
+    /// Make sure a sync worker exists and is connected to `self.current_room`.
+    /// Called every frame once the user is signed in and a room is picked.
+    fn ensure_sync_connected(&mut self) {
+        if self.session.access_token().is_none() {
+            return;
+        }
+        let Some(room_id) = self.current_room.clone() else {
+            return;
+        };
+        if self.sync.is_none() {
+            self.sync = Some(SyncHandle::spawn());
+        }
+        if let Some(handle) = self.sync.as_ref() {
+            // The sync worker dedups duplicate Connect commands by
+            // closing the previous client first, so resending on every
+            // frame would be wasteful. We use the connection_state as
+            // a coarse "have we connected at least once" signal.
+            if matches!(self.connection_state, ConnectionState::Offline) {
+                let token = self.session.access_token().map(str::to_owned);
+                connect_handle(handle, &room_id, self.local_peer_id, token);
+            }
+        }
+    }
+
+    /// Switch to a new room : disconnect the current sync, wipe the
+    /// local CRDT (it belongs to the previous room), and queue a fresh
+    /// connect for the new room.
+    fn switch_room(&mut self, new_room: String) {
+        if self.current_room.as_deref() == Some(new_room.as_str()) {
+            self.show_picker = false;
+            return;
+        }
+        if let Some(handle) = self.sync.as_ref() {
+            handle.send(SyncCmd::Disconnect);
+        }
+        self.current_room = Some(new_room);
+        self.connection_state = ConnectionState::Offline;
+        self.peers.clear();
+        self.crdt = YrsBackend::new();
+        self.last_element_count = 0;
+        self.show_picker = false;
+        info!(target: "bse::app", room = ?self.current_room, "switched room");
+    }
+
+    /// Show the room picker if it has been opened manually or if the
+    /// user just signed in and has not chosen a room yet.
+    fn maybe_show_picker(&mut self, ctx: &egui::Context) {
+        if !self.session.is_signed_in() || self.server_http_base.is_empty() {
+            return;
+        }
+        let needs_pick = self.show_picker || self.current_room.is_none();
+        if !needs_pick {
+            return;
+        }
+        let Some(token) = self.session.access_token().map(str::to_owned) else {
+            return;
+        };
+        if let Some(room) =
+            self.room_picker
+                .show(ctx, &self.server_http_base, &token)
+        {
+            self.switch_room(room);
+        }
     }
 
     /// Render the small account widget on the right side of the toolbar
@@ -397,9 +479,21 @@ impl BseApp {
             return;
         };
         let display_name = display_name.clone();
+        let room_label = self
+            .current_room
+            .clone()
+            .unwrap_or_else(|| "(no room)".to_string());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.small_button("Sign out").clicked() {
                 self.sign_out();
+            }
+            ui.add_space(8.0);
+            if ui
+                .small_button(format!("Room : {room_label}"))
+                .on_hover_text("Click to switch room")
+                .clicked()
+            {
+                self.show_picker = true;
             }
             ui.add_space(8.0);
             ui.label(format!("Signed in as {display_name}"));
@@ -452,22 +546,27 @@ impl BseApp {
     }
 }
 
-fn spawn_sync_if_configured(
+/// Build a [`ClientConfig`] for `room_id` using env vars + the current
+/// session for the auth token, then dispatch a [`SyncCmd::Connect`].
+fn connect_handle(
+    handle: &SyncHandle,
+    room_id: &str,
     local_peer_id: PeerId,
     auth_token: Option<String>,
-) -> Option<SyncHandle> {
-    let url = std::env::var("BSE_SERVER_URL").ok()?;
-    let room = std::env::var("BSE_ROOM").unwrap_or_else(|_| DEFAULT_ROOM.to_string());
-    let display_name = std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
-    let handle = SyncHandle::spawn();
+) -> bool {
+    let Ok(url) = std::env::var("BSE_SERVER_URL") else {
+        return false;
+    };
+    let display_name =
+        std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
     handle.send(SyncCmd::Connect(ClientConfig {
         server_url: url,
-        room_id: room,
+        room_id: room_id.to_string(),
         peer_id: local_peer_id,
         display_name,
         auth_token,
     }));
-    Some(handle)
+    true
 }
 
 fn whoami_or_anonymous() -> String {
@@ -503,6 +602,8 @@ impl eframe::App for BseApp {
         self.poll_refresh();
         self.maybe_refresh_token();
         self.maybe_show_login(ctx);
+        self.maybe_show_picker(ctx);
+        self.ensure_sync_connected();
         self.handle_file_shortcuts(ctx);
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();

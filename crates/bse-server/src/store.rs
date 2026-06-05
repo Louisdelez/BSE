@@ -24,6 +24,68 @@ use rusqlite::{Connection, OptionalExtension, params};
 use thiserror::Error;
 use tracing::{debug, info};
 
+/// Roles a user can hold inside a room (v021).
+///
+/// `Owner` is the user that created the room — has full rights
+/// (invite, kick, delete). `Member` can read and write to the
+/// document but cannot manage other members. More fine-grained
+/// permissions (Viewer, Commenter, …) will be added when the UI
+/// needs them.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RoomRole {
+    /// Created the room ; can manage members.
+    Owner,
+    /// Read + write access to the document, no member management.
+    Member,
+}
+
+impl RoomRole {
+    /// Render the role as the wire-format string stored in `SQLite`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Member => "member",
+        }
+    }
+
+    /// Parse the wire-format string. Returns `None` for unknown values.
+    ///
+    /// Deliberately *not* an impl of `std::str::FromStr` : the
+    /// wire-format strings are an internal contract, not a general
+    /// parsing rule, and the trait would force a useless error type.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "owner" => Some(Self::Owner),
+            "member" => Some(Self::Member),
+            _ => None,
+        }
+    }
+}
+
+/// A row in the `rooms` table.
+#[derive(Clone, Debug)]
+pub struct RoomRow {
+    /// Room id (slug / UUID — the server does not enforce a format).
+    pub id: String,
+    /// Display name shown in the room list.
+    pub name: String,
+    /// User that created the room.
+    pub created_by: UserId,
+    /// Unix timestamp (seconds) of creation.
+    pub created_at: i64,
+}
+
+/// One entry in a user's room list, joined with the user's role.
+#[derive(Clone, Debug)]
+pub struct UserRoomRow {
+    /// The room itself.
+    pub room: RoomRow,
+    /// Role the user holds in the room.
+    pub role: RoomRole,
+}
+
 /// Errors produced by the server store.
 #[derive(Debug, Error)]
 pub enum ServerStoreError {
@@ -75,22 +137,41 @@ pub struct ServerStore {
 
 /// Schema migrations applied in order. Inserts into `schema_migrations`
 /// happen inside the same transaction as the DDL.
-const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    "CREATE TABLE users (\
-        id            TEXT PRIMARY KEY, \
-        email         TEXT NOT NULL, \
-        email_lc      TEXT NOT NULL UNIQUE, \
-        display_name  TEXT NOT NULL, \
-        password_hash TEXT NOT NULL, \
-        created_at    INTEGER NOT NULL\
-     ); \
-     CREATE TABLE room_snapshots (\
-        room_id     TEXT PRIMARY KEY, \
-        bytes       BLOB NOT NULL, \
-        updated_at  INTEGER NOT NULL\
-     );",
-)];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        "CREATE TABLE users (\
+            id            TEXT PRIMARY KEY, \
+            email         TEXT NOT NULL, \
+            email_lc      TEXT NOT NULL UNIQUE, \
+            display_name  TEXT NOT NULL, \
+            password_hash TEXT NOT NULL, \
+            created_at    INTEGER NOT NULL\
+         ); \
+         CREATE TABLE room_snapshots (\
+            room_id     TEXT PRIMARY KEY, \
+            bytes       BLOB NOT NULL, \
+            updated_at  INTEGER NOT NULL\
+         );",
+    ),
+    (
+        2,
+        "CREATE TABLE rooms (\
+            id          TEXT PRIMARY KEY, \
+            name        TEXT NOT NULL, \
+            created_by  TEXT NOT NULL, \
+            created_at  INTEGER NOT NULL\
+         ); \
+         CREATE TABLE room_members (\
+            room_id    TEXT NOT NULL, \
+            user_id    TEXT NOT NULL, \
+            role       TEXT NOT NULL, \
+            joined_at  INTEGER NOT NULL, \
+            PRIMARY KEY (room_id, user_id)\
+         ); \
+         CREATE INDEX idx_room_members_user ON room_members(user_id);",
+    ),
+];
 
 impl ServerStore {
     /// Open or create a SQLite-backed server store at `path`.
@@ -267,6 +348,141 @@ impl ServerStore {
             .optional()?;
         Ok(row)
     }
+
+    // ---------------------------- rooms ----------------------------
+
+    /// Create a room and make `created_by` its owner, atomically.
+    /// Returns `Ok(false)` if a room with that id already exists.
+    pub fn create_room(
+        &self,
+        id: &str,
+        name: &str,
+        created_by: UserId,
+    ) -> Result<bool, ServerStoreError> {
+        let now = unix_now_secs();
+        let mut conn = self.lock()?;
+        let tx = conn.transaction()?;
+        let n = tx.execute(
+            "INSERT OR IGNORE INTO rooms(id, name, created_by, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, name, created_by.to_string(), now],
+        )?;
+        if n == 0 {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO room_members(room_id, user_id, role, joined_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, created_by.to_string(), RoomRole::Owner.as_str(), now],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// Add a member to a room (no-op if already a member with the same
+    /// role). Returns the role actually stored.
+    pub fn add_member(
+        &self,
+        room_id: &str,
+        user_id: UserId,
+        role: RoomRole,
+    ) -> Result<RoomRole, ServerStoreError> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO room_members(room_id, user_id, role, joined_at) \
+             VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT(room_id, user_id) DO UPDATE SET role = excluded.role",
+            params![room_id, user_id.to_string(), role.as_str(), unix_now_secs()],
+        )?;
+        Ok(role)
+    }
+
+    /// Drop a member from a room. Returns the number of rows removed
+    /// (0 if the user was not a member).
+    pub fn remove_member(
+        &self,
+        room_id: &str,
+        user_id: UserId,
+    ) -> Result<usize, ServerStoreError> {
+        let conn = self.lock()?;
+        let n = conn.execute(
+            "DELETE FROM room_members WHERE room_id = ?1 AND user_id = ?2",
+            params![room_id, user_id.to_string()],
+        )?;
+        Ok(n)
+    }
+
+    /// `true` iff a row exists in `rooms` for `room_id`.
+    pub fn room_exists(&self, room_id: &str) -> Result<bool, ServerStoreError> {
+        let conn = self.lock()?;
+        let row: Option<i64> = conn
+            .query_row(
+                "SELECT 1 FROM rooms WHERE id = ?1",
+                params![room_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(row.is_some())
+    }
+
+    /// Role held by `user_id` in `room_id`, or `None` if not a member.
+    pub fn role_of(
+        &self,
+        room_id: &str,
+        user_id: UserId,
+    ) -> Result<Option<RoomRole>, ServerStoreError> {
+        let conn = self.lock()?;
+        let row: Option<String> = conn
+            .query_row(
+                "SELECT role FROM room_members WHERE room_id = ?1 AND user_id = ?2",
+                params![room_id, user_id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(row.and_then(|s| RoomRole::parse(&s)))
+    }
+
+    /// All rooms a user is a member of, ordered by most-recently-joined first.
+    pub fn list_user_rooms(
+        &self,
+        user_id: UserId,
+    ) -> Result<Vec<UserRoomRow>, ServerStoreError> {
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.name, r.created_by, r.created_at, m.role \
+             FROM rooms r JOIN room_members m ON m.room_id = r.id \
+             WHERE m.user_id = ?1 \
+             ORDER BY m.joined_at DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![user_id.to_string()], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut out = Vec::with_capacity(rows.len());
+        for (id, name, created_by, created_at, role) in rows {
+            let created_by: UserId = created_by
+                .parse()
+                .map_err(|e: uuid::Error| ServerStoreError::Corruption(e.to_string()))?;
+            let role = RoomRole::parse(&role).ok_or_else(|| {
+                ServerStoreError::Corruption(format!("unknown role `{role}`"))
+            })?;
+            out.push(UserRoomRow {
+                room: RoomRow {
+                    id,
+                    name,
+                    created_by,
+                    created_at,
+                },
+                role,
+            });
+        }
+        Ok(out)
+    }
 }
 
 fn unix_now_secs() -> i64 {
@@ -343,5 +559,55 @@ mod tests {
         assert!(!s.has_any_user().unwrap());
         s.insert_user(UserId::new(), "a@b.c", "A", "h").unwrap();
         assert!(s.has_any_user().unwrap());
+    }
+
+    #[test]
+    fn create_room_inserts_owner_membership() {
+        let s = ServerStore::in_memory().unwrap();
+        let alice = UserId::new();
+        s.insert_user(alice, "a@b.c", "Alice", "h").unwrap();
+        assert!(s.create_room("brain-1", "Brainstorm", alice).unwrap());
+        // Idempotency : same id is rejected.
+        assert!(!s.create_room("brain-1", "Other", alice).unwrap());
+        assert_eq!(s.role_of("brain-1", alice).unwrap(), Some(RoomRole::Owner));
+    }
+
+    #[test]
+    fn list_user_rooms_returns_memberships() {
+        let s = ServerStore::in_memory().unwrap();
+        let alice = UserId::new();
+        let bob = UserId::new();
+        s.insert_user(alice, "a@b.c", "Alice", "h").unwrap();
+        s.insert_user(bob, "b@b.c", "Bob", "h").unwrap();
+        s.create_room("room-1", "Room 1", alice).unwrap();
+        s.create_room("room-2", "Room 2", alice).unwrap();
+        s.add_member("room-2", bob, RoomRole::Member).unwrap();
+
+        let alice_rooms = s.list_user_rooms(alice).unwrap();
+        assert_eq!(alice_rooms.len(), 2);
+        let bob_rooms = s.list_user_rooms(bob).unwrap();
+        assert_eq!(bob_rooms.len(), 1);
+        assert_eq!(bob_rooms[0].room.id, "room-2");
+        assert_eq!(bob_rooms[0].role, RoomRole::Member);
+    }
+
+    #[test]
+    fn remove_member_is_idempotent() {
+        let s = ServerStore::in_memory().unwrap();
+        let alice = UserId::new();
+        let bob = UserId::new();
+        s.insert_user(alice, "a@b.c", "Alice", "h").unwrap();
+        s.insert_user(bob, "b@b.c", "Bob", "h").unwrap();
+        s.create_room("room", "Room", alice).unwrap();
+        s.add_member("room", bob, RoomRole::Member).unwrap();
+        assert_eq!(s.remove_member("room", bob).unwrap(), 1);
+        assert_eq!(s.remove_member("room", bob).unwrap(), 0);
+        assert!(s.role_of("room", bob).unwrap().is_none());
+    }
+
+    #[test]
+    fn role_of_returns_none_for_non_member() {
+        let s = ServerStore::in_memory().unwrap();
+        assert!(s.role_of("room", UserId::new()).unwrap().is_none());
     }
 }

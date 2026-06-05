@@ -13,6 +13,7 @@ mod canvas;
 mod login;
 mod peers;
 mod project_io;
+mod room_picker;
 mod sync_thread;
 mod tracing_setup;
 
@@ -28,7 +29,7 @@ use crate::app::BseApp;
 pub const APP_INFO: AppInfo = AppInfo {
     name: "BSE",
     version: env!("CARGO_PKG_VERSION"),
-    milestone: "v016.1",
+    milestone: "v021",
 };
 
 /// Start the event loop and run BSE until the user closes the window.

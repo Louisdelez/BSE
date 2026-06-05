@@ -17,6 +17,7 @@ use axum::{
 };
 use bse_auth::TokenType;
 use bse_protocol::{OpPayload, ServerMessage};
+use bse_types::UserId;
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -42,10 +43,8 @@ pub async fn ws_room(
             warn!(%room_id, "ws upgrade rejected : missing token");
             return (StatusCode::UNAUTHORIZED, "missing token").into_response();
         };
-        match app.jwt.verify(token) {
-            Ok(claims) if claims.token_type == TokenType::Access => {
-                debug!(%room_id, sub = %claims.sub, "ws upgrade authenticated");
-            }
+        let claims = match app.jwt.verify(token) {
+            Ok(c) if c.token_type == TokenType::Access => c,
             Ok(_) => {
                 warn!(%room_id, "ws upgrade rejected : refresh token presented");
                 return (StatusCode::UNAUTHORIZED, "wrong token type").into_response();
@@ -53,6 +52,44 @@ pub async fn ws_room(
             Err(err) => {
                 warn!(%room_id, error = %err, "ws upgrade rejected : invalid token");
                 return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+            }
+        };
+        let Ok(user_id) = claims.sub.parse::<UserId>() else {
+            warn!(%room_id, "ws upgrade rejected : malformed user id");
+            return (StatusCode::UNAUTHORIZED, "invalid subject").into_response();
+        };
+        debug!(%room_id, %user_id, "ws upgrade authenticated");
+
+        // v021 : membership check.
+        // - user is already a member → allow.
+        // - room does not exist yet → auto-create it with the user as
+        //   owner (keeps the "set BSE_ROOM and connect" UX working).
+        // - room exists but user is not a member → 403.
+        match app.store.role_of(&room_id, user_id) {
+            Ok(Some(_)) => {}
+            Ok(None) => match app.store.room_exists(&room_id) {
+                Ok(true) => {
+                    warn!(%room_id, %user_id, "ws upgrade rejected : not a member");
+                    return (StatusCode::FORBIDDEN, "not a member of this room").into_response();
+                }
+                Ok(false) => {
+                    if let Err(err) = app.store.create_room(&room_id, &room_id, user_id) {
+                        warn!(%room_id, error = %err, "auto-create room failed");
+                        return (StatusCode::INTERNAL_SERVER_ERROR, "room init failed")
+                            .into_response();
+                    }
+                    info!(%room_id, %user_id, "auto-created room as owner on first WS connect");
+                }
+                Err(err) => {
+                    warn!(%room_id, error = %err, "room_exists check failed");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "room lookup failed")
+                        .into_response();
+                }
+            },
+            Err(err) => {
+                warn!(%room_id, error = %err, "membership lookup failed");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "membership lookup failed")
+                    .into_response();
             }
         }
     }
