@@ -8,10 +8,49 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v003` :
-- Fenêtre desktop avec eframe + wgpu
-- Toolbar egui minimale
-- Background rendu via wgpu paint callback
+À venir dans `v004` :
+- Système de caméra mutable côté canvas
+- Pan via Espace + drag
+- Zoom molette centré sur le curseur
+- Background avec grille rendu via shader WGSL (premier paint callback wgpu)
+
+---
+
+## [v003] — 2026-06-05
+
+### 🪟 Fenêtre desktop fonctionnelle
+
+Premier palier avec une vraie fenêtre BSE qui s'ouvre. La fenêtre affiche
+une toolbar de sélection d'outils, un canvas central avec background
+Miro (surface `#F7F8FA`) et croix d'origine, et une status bar
+contenant zoom, FPS, outil actif et état de connexion.
+
+### 🎉 Added
+- **`eframe` 0.30** intégré (features : `wgpu`, `default_fonts`, `persistence`)
+- **`BseApp`** struct implémentant `eframe::App` avec orchestration
+  toolbar / canvas / status bar
+- **`bse-ui::toolbar`** : sélection d'outil parmi 6 (Select/Pen/Rectangle/
+  Ellipse/Line/Text) avec highlight Miro yellow `#FFD02F` sur l'actif
+- **`bse-ui::status_bar`** : version + milestone + outil + zoom + FPS +
+  connection indicator (palette Miro)
+- **`bse-app::canvas_panel`** : zone centrale avec background, croix
+  d'origine, label de phase
+- **FPS counter** lissé (EMA α=0.1) dans la status bar
+- **Splitting du binaire** : `lib.rs` + `main.rs` (testabilité, `bse_app::run()`)
+
+### 🔧 Changed
+- `bse-app` est maintenant à la fois `[[bin]] name = "bse"` ET `[lib]`
+- `bse-ui` dépend de `eframe` (avant : aucune UI lib)
+
+### 🛠 Infrastructure
+- Toujours `cargo clippy -- -D warnings` propre (pedantic)
+- Toujours 30 tests verts
+- Release build : 58 s sur Windows 11 / Rust 1.94
+
+### 📌 Lancer en local
+```bash
+cargo run --release -p bse-app
+```
 
 ---
 

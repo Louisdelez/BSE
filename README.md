@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Status: Scaffolding](https://img.shields.io/badge/Status-Scaffolding-blue.svg)](./docs)
-[![Version: v002](https://img.shields.io/badge/Version-v002-green.svg)](./CHANGELOG.md)
+[![Version: v003](https://img.shields.io/badge/Version-v003-green.svg)](./CHANGELOG.md)
 [![CI](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml/badge.svg)](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/lang-Rust-orange.svg)](https://www.rust-lang.org)
 
@@ -28,8 +28,9 @@ BSE permet à plusieurs personnes de **brainstormer ensemble en temps réel** su
 
 ## 📦 État du projet
 
-> **v002 — Cargo workspace scaffoldé.**
-> 11 crates Rust, build clean, 30 tests verts, CI multi-OS. La fenêtre desktop arrive en v003.
+> **v003 — Fenêtre desktop fonctionnelle.**
+> `cargo run --release -p bse-app` ouvre une vraie fenêtre BSE avec toolbar, canvas et status bar.
+> Pan/zoom arrivent en v004.
 
 Voir la [roadmap complète](./docs/00-VUE-ENSEMBLE/04-roadmap.md) et le [CHANGELOG](./CHANGELOG.md).
 

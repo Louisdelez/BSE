@@ -12,6 +12,7 @@ description = "Reusable egui-based UI components for the BSE app."
 bse-canvas.workspace = true
 bse-model.workspace = true
 bse-types.workspace = true
+eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }

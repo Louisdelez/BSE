@@ -8,6 +8,10 @@ license.workspace = true
 repository.workspace = true
 description = "BSE desktop application binary."
 
+[lib]
+name = "bse_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bse"
 path = "src/main.rs"
@@ -19,6 +23,7 @@ bse-model.workspace = true
 bse-render.workspace = true
 bse-types.workspace = true
 bse-ui.workspace = true
+eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
