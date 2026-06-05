@@ -542,12 +542,51 @@ fn paint_stroke_outline(
         .into_iter()
         .map(|p| world_to_screen(camera, viewport, rect, p))
         .collect();
-    let fill = to_color32(color, 1.0);
-    painter.add(egui::Shape::convex_polygon(
-        screen_points,
-        fill,
-        Stroke::NONE,
-    ));
+    paint_concave_polygon(painter, &screen_points, to_color32(color, 1.0));
+}
+
+/// Triangulate a (possibly concave, self-non-intersecting) polygon
+/// outline via ear-clipping and submit it as an `egui::Mesh`.
+///
+/// Pen-stroke outlines from `perfect-freehand` are long snake-like
+/// shapes that `Shape::convex_polygon` cannot handle — it fan-
+/// triangulates from the first vertex, producing the giant
+/// triangular blobs that v030 surfaced. `earcutr` handles concave
+/// polygons correctly.
+fn paint_concave_polygon(painter: &egui::Painter, screen_points: &[Pos2], color: Color32) {
+    if screen_points.len() < 3 {
+        return;
+    }
+    // earcutr takes a flat `Vec<f64>` (xy interleaved) and returns
+    // triangle indices.
+    let flat: Vec<f64> = screen_points
+        .iter()
+        .flat_map(|p| [f64::from(p.x), f64::from(p.y)])
+        .collect();
+    let Ok(indices) = earcutr::earcut(&flat, &[], 2) else {
+        // Earcut failed — fall back to the (broken) convex variant
+        // rather than dropping the stroke entirely.
+        painter.add(egui::Shape::convex_polygon(
+            screen_points.to_vec(),
+            color,
+            Stroke::NONE,
+        ));
+        return;
+    };
+    if indices.is_empty() {
+        return;
+    }
+    let mut mesh = egui::epaint::Mesh::default();
+    for p in screen_points {
+        mesh.colored_vertex(*p, color);
+    }
+    for tri in indices.chunks_exact(3) {
+        let a = u32::try_from(tri[0]).unwrap_or(0);
+        let b = u32::try_from(tri[1]).unwrap_or(0);
+        let c = u32::try_from(tri[2]).unwrap_or(0);
+        mesh.add_triangle(a, b, c);
+    }
+    painter.add(egui::Shape::mesh(mesh));
 }
 
 fn world_to_screen(camera: &Camera, viewport: WorldVec2, rect: Rect, world: WorldVec2) -> Pos2 {
