@@ -15,7 +15,7 @@ use bse_spatial::Quadtree;
 use bse_storage::{LocalStorage, SqliteStorage};
 use bse_sync::{ClientConfig, ConnectionState};
 use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
-use bse_ui::{ConnectionStatus, StatusInfo, status_bar, toolbar};
+use bse_ui::{ConnectionStatus, StatusInfo, ThemeMode, apply_bse_theme, status_bar, toolbar};
 use eframe::egui;
 use tracing::{info, warn};
 
@@ -86,6 +86,10 @@ pub struct BseApp {
     /// *incremental* updates rather than full snapshots (v023).
     /// Empty until the first broadcast, which sends a full snapshot.
     last_broadcast_sv: Vec<u8>,
+    /// Whether the BSE theme has been applied yet. `apply_bse_theme`
+    /// needs an `egui::Context`, which we only get inside `update`, so
+    /// it's deferred to the first frame.
+    theme_applied: bool,
 }
 
 impl Default for BseApp {
@@ -168,6 +172,7 @@ impl BseApp {
             current_room: std::env::var("BSE_ROOM").ok(),
             show_picker: false,
             last_broadcast_sv: Vec::new(),
+            theme_applied: false,
         }
     }
 
@@ -616,6 +621,10 @@ fn open_default_storage() -> Option<SqliteStorage> {
 
 impl eframe::App for BseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.theme_applied {
+            apply_bse_theme(ctx, ThemeMode::Light);
+            self.theme_applied = true;
+        }
         self.update_fps();
         self.process_sync_events();
         self.poll_refresh();

@@ -9,8 +9,10 @@
 
 mod info;
 mod status_bar;
+pub mod theme;
 mod toolbar;
 
 pub use info::AppInfo;
 pub use status_bar::{ConnectionStatus, StatusInfo, status_bar};
+pub use theme::{ThemeMode, apply_bse_theme};
 pub use toolbar::toolbar;

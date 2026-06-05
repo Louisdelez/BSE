@@ -5,6 +5,8 @@
 
 mod tracing_setup;
 
+use std::net::SocketAddr;
+
 use bse_protocol::PROTOCOL_VERSION;
 use bse_server::{AppState, ServerConfig, routes::router_with};
 use tracing::{error, info};
@@ -35,9 +37,16 @@ async fn serve(cfg: ServerConfig) -> std::io::Result<()> {
     let local = listener.local_addr()?;
     info!(addr = %local, "listening");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // `into_make_service_with_connect_info` is required so that the
+    // rate limiter's `SmartIpKeyExtractor` can fall back to the peer
+    // address when no X-Forwarded-For header is present (the typical
+    // case for the desktop client talking to the server directly).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     info!("server shut down cleanly");
     Ok(())
