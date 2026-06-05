@@ -23,6 +23,13 @@ pub trait CrdtBackend: Send + Sync + 'static {
     /// Borrow an element.
     fn get_element(&self, id: ElementId) -> Option<Element>;
 
+    /// Snapshot every element currently in the document.
+    ///
+    /// Iteration order is unspecified ; callers that need z-order or
+    /// time order sort the result themselves. This is the "read view"
+    /// used by the renderer.
+    fn iter_elements(&self) -> Vec<Element>;
+
     /// Encode the full state for sharing with a new peer.
     fn encode_snapshot(&self) -> Result<Vec<u8>, CrdtError>;
 

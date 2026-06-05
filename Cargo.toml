@@ -43,6 +43,7 @@ bse-sync = { path = "crates/bse-sync" }
 bse-ui = { path = "crates/bse-ui" }
 bse-pen = { path = "crates/bse-pen" }
 bse-spatial = { path = "crates/bse-spatial" }
+bse-projects = { path = "crates/bse-projects" }
 
 # Foundation
 serde = { version = "1", features = ["derive"] }

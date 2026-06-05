@@ -3,8 +3,9 @@
 //! stroke rendering ; v013 adds text ; v014 adds raster images.
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
+use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_model::{
-    Camera, Element, ElementKind, ImageStyle, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style,
+    Camera, Element, ElementKind, ImageStyle, PenStyle as ModelPenStyle, ShapeStyle, Style,
     TextStyle, element::StrokePoint,
 };
 use bse_pen::{InputPoint, StrokeOptions, get_stroke};
@@ -16,24 +17,24 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Stroke};
 
 use crate::assets::AssetStore;
 
-/// Render every element of `scene` that intersects the camera viewport,
-/// in z-order. Returns the count of elements actually drawn.
+/// Render every visible element of the CRDT-backed document, in z-order.
+/// Returns the count of elements actually drawn.
 #[allow(clippy::too_many_arguments)]
 pub fn elements(
     painter: &egui::Painter,
     rect: Rect,
     camera: &Camera,
     viewport: WorldVec2,
-    scene: &Scene,
+    crdt: &YrsBackend,
     spatial: &Quadtree<ElementId>,
     assets: &mut AssetStore,
     ctx: &egui::Context,
 ) -> u32 {
     let world_viewport = camera.viewport_world_rect(viewport);
     let visible_ids = spatial.query(world_viewport);
-    let mut visible: Vec<&Element> = visible_ids
+    let mut visible: Vec<Element> = visible_ids
         .into_iter()
-        .filter_map(|id| scene.get(id))
+        .filter_map(|id| crdt.get_element(id))
         .collect();
     visible.sort_by(|a, b| a.z.cmp(&b.z).then(a.id.as_uuid().cmp(&b.id.as_uuid())));
     for element in &visible {

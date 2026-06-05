@@ -153,6 +153,14 @@ impl CrdtBackend for YrsBackend {
         Self::decode_element(&out)
     }
 
+    fn iter_elements(&self) -> Vec<Element> {
+        let txn = self.doc.transact();
+        self.elements
+            .iter(&txn)
+            .filter_map(|(_, out)| Self::decode_element(&out))
+            .collect()
+    }
+
     fn encode_snapshot(&self) -> Result<Vec<u8>, CrdtError> {
         let txn = self.doc.transact();
         // Full state, encoded with v2 — small payloads benefit less from v2

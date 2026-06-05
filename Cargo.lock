@@ -336,12 +336,16 @@ name = "bse-app"
 version = "0.0.2"
 dependencies = [
  "bse-canvas",
+ "bse-crdt",
  "bse-model",
  "bse-pen",
+ "bse-projects",
  "bse-render",
  "bse-spatial",
+ "bse-storage",
  "bse-types",
  "bse-ui",
+ "directories",
  "eframe",
  "image",
  "thiserror 1.0.69",

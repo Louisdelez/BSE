@@ -49,6 +49,10 @@ impl CrdtBackend for InMemoryBackend {
         self.scene.get(id).cloned()
     }
 
+    fn iter_elements(&self) -> Vec<Element> {
+        self.scene.iter().cloned().collect()
+    }
+
     fn encode_snapshot(&self) -> Result<Vec<u8>, CrdtError> {
         Err(CrdtError::NotImplemented(
             "snapshot encoding lands with yrs in v009",

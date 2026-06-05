@@ -1,4 +1,4 @@
-//! Translate `egui` input events into camera and scene mutations.
+//! Translate `egui` input events into camera and document mutations.
 //!
 //! Conventions :
 //! - **Pan** : middle-mouse drag, OR primary drag while Space is held.
@@ -7,18 +7,19 @@
 //!   (Rectangle, Ellipse, Line) is active and Space is *not* held.
 //! - **Drag-to-draw stroke** : primary drag while the Pen tool is
 //!   active and Space is *not* held.
+//! - **Click to place text** : primary click while the Text tool is
+//!   active and Space is *not* held.
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
-use bse_model::Scene;
+use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_pen::InputPoint;
 use bse_types::Vec2 as WorldVec2;
 use eframe::egui::{self, Key, PointerButton, Rect, Response};
+use tracing::warn;
 
 use crate::canvas::draw;
 
-/// Multiplier applied to a single scroll-wheel notch.
 const ZOOM_PER_SCROLL_UNIT: f32 = 0.005;
-/// Default mouse-input pressure (we don't yet read stylus pressure).
 const DEFAULT_PRESSURE: f32 = 0.5;
 
 /// Apply input from the current frame.
@@ -28,7 +29,7 @@ pub fn apply(
     rect: Rect,
     viewport: WorldVec2,
     canvas: &mut CanvasState,
-    scene: &mut Scene,
+    crdt: &mut YrsBackend,
 ) {
     let space_held = ctx.input(|i| i.key_down(Key::Space));
     handle_pan(response, canvas, space_held);
@@ -38,10 +39,10 @@ pub fn apply(
     }
     match canvas.tool {
         ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Line => {
-            handle_shape_drag(ctx, response, rect, viewport, canvas, scene);
+            handle_shape_drag(ctx, response, rect, viewport, canvas, crdt);
         }
-        ToolKind::Pen => handle_pen_drag(ctx, response, rect, viewport, canvas, scene),
-        ToolKind::Text => handle_text_click(ctx, response, rect, viewport, canvas, scene),
+        ToolKind::Pen => handle_pen_drag(ctx, response, rect, viewport, canvas, crdt),
+        ToolKind::Text => handle_text_click(ctx, response, rect, viewport, canvas, crdt),
         ToolKind::Select => {}
     }
 }
@@ -52,12 +53,13 @@ fn handle_text_click(
     rect: Rect,
     viewport: WorldVec2,
     canvas: &CanvasState,
-    scene: &mut Scene,
+    crdt: &mut YrsBackend,
 ) {
     if response.clicked_by(PointerButton::Primary)
         && let Some(world) = cursor_world(ctx, rect, viewport, canvas)
+        && let Err(err) = crdt.upsert_element(draw::commit_text(world))
     {
-        scene.insert(draw::commit_text(world));
+        warn!(target: "bse::canvas", error = %err, "text upsert failed");
     }
 }
 
@@ -99,7 +101,7 @@ fn handle_shape_drag(
     rect: Rect,
     viewport: WorldVec2,
     canvas: &mut CanvasState,
-    scene: &mut Scene,
+    crdt: &mut YrsBackend,
 ) {
     if response.drag_started_by(PointerButton::Primary) {
         if let Some(start_world) = cursor_world(ctx, rect, viewport, canvas) {
@@ -123,8 +125,10 @@ fn handle_shape_drag(
             current_world,
         } = canvas.tool_state
     {
-        if let Some(element) = draw::commit_shape(canvas.tool, anchor_world, current_world) {
-            scene.insert(element);
+        if let Some(element) = draw::commit_shape(canvas.tool, anchor_world, current_world)
+            && let Err(err) = crdt.upsert_element(element)
+        {
+            warn!(target: "bse::canvas", error = %err, "shape upsert failed");
         }
         canvas.tool_state = ToolState::Idle;
     }
@@ -136,7 +140,7 @@ fn handle_pen_drag(
     rect: Rect,
     viewport: WorldVec2,
     canvas: &mut CanvasState,
-    scene: &mut Scene,
+    crdt: &mut YrsBackend,
 ) {
     if response.drag_started_by(PointerButton::Primary) {
         if let Some(world) = cursor_world(ctx, rect, viewport, canvas) {
@@ -145,7 +149,6 @@ fn handle_pen_drag(
             };
         }
     } else if response.dragged_by(PointerButton::Primary) {
-        // Compute cursor first (immutable borrow), then mutate.
         let world = cursor_world(ctx, rect, viewport, canvas);
         if let (Some(world), ToolState::DrawingStroke { points }) = (world, &mut canvas.tool_state)
         {
@@ -154,8 +157,9 @@ fn handle_pen_drag(
     } else if response.drag_stopped_by(PointerButton::Primary)
         && let ToolState::DrawingStroke { points } = std::mem::take(&mut canvas.tool_state)
         && let Some(element) = draw::commit_stroke(&points)
+        && let Err(err) = crdt.upsert_element(element)
     {
-        scene.insert(element);
+        warn!(target: "bse::canvas", error = %err, "stroke upsert failed");
     }
 }
 

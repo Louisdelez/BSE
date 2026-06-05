@@ -1,7 +1,7 @@
 //! The central canvas widget.
 
 use bse_canvas::CanvasState;
-use bse_model::Scene;
+use bse_crdt::YrsBackend;
 use bse_spatial::Quadtree;
 use bse_types::{ElementId, Vec2 as WorldVec2};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
@@ -14,7 +14,7 @@ use crate::canvas::{draw, grid, input};
 pub fn show(
     ui: &mut egui::Ui,
     canvas: &mut CanvasState,
-    scene: &mut Scene,
+    crdt: &mut YrsBackend,
     spatial: &Quadtree<ElementId>,
     assets: &mut AssetStore,
 ) -> u32 {
@@ -23,7 +23,7 @@ pub fn show(
     let rect = response.rect;
     let viewport = WorldVec2::new(rect.width(), rect.height());
 
-    input::apply(ui.ctx(), &response, rect, viewport, canvas, scene);
+    input::apply(ui.ctx(), &response, rect, viewport, canvas, crdt);
 
     paint_background(&painter, rect);
     grid::paint(&painter, rect, &canvas.camera, viewport);
@@ -33,7 +33,7 @@ pub fn show(
         rect,
         &canvas.camera,
         viewport,
-        scene,
+        crdt,
         spatial,
         assets,
         ui.ctx(),
