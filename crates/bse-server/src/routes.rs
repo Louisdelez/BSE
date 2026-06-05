@@ -21,7 +21,7 @@ use tracing::warn;
 
 use crate::handlers::{
     auth::{login, refresh, register},
-    health::health,
+    health::{health, ready},
     info::info,
     rooms::{add_member, create_room, list_rooms, remove_member},
 };
@@ -127,6 +127,7 @@ pub fn router_with(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/ready", get(ready))
         .route("/api/info", get(info))
         .merge(api)
         .route("/ws/rooms/:room_id", get(ws_room))

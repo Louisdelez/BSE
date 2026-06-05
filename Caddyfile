@@ -1,0 +1,23 @@
+# Reference Caddyfile for BSE self-hosting.
+#
+# Replace `bse.example.com` with your domain. Caddy will automatically
+# obtain and renew TLS certificates from Let's Encrypt as long as
+# ports 80 + 443 are reachable from the internet.
+
+bse.example.com {
+    encode gzip zstd
+
+    # Proxy everything to the BSE server. WebSocket upgrades are
+    # forwarded transparently — no special block required since
+    # reverse_proxy passes Upgrade/Connection headers by default.
+    reverse_proxy server:8080
+
+    # Tighter timeouts for /api/* ; WS upgrades use the default
+    # long-lived timeout so collaboration sessions are not cut off.
+    @api path /api/*
+    reverse_proxy @api server:8080 {
+        transport http {
+            response_header_timeout 30s
+        }
+    }
+}

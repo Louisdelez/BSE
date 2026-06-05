@@ -1,0 +1,49 @@
+# Reference docker-compose for self-hosting BSE behind a TLS-terminating
+# reverse proxy (Caddy). Tested on Linux ; should work on macOS/Windows
+# via Docker Desktop with minor tweaks (no host-mode networking).
+#
+# Production checklist :
+# - Replace `example.com` below with your domain.
+# - Set `BSE_JWT_SECRET` to a long, random secret (32+ bytes).
+# - Set `BSE_ALLOWED_ORIGINS` to a comma-separated list of allowed
+#   web-client origins (or remove if you only use the desktop client).
+# - Make sure ports 80 + 443 are reachable from the internet for the
+#   ACME challenge.
+
+services:
+  server:
+    build: .
+    image: bse-server:latest
+    restart: unless-stopped
+    environment:
+      BSE_BIND_ADDR: "0.0.0.0:8080"
+      BSE_REQUIRE_AUTH: "1"
+      BSE_JWT_SECRET: "${BSE_JWT_SECRET:?must be set in .env or shell}"
+      BSE_SERVER_DATA_DIR: "/home/bse/data"
+      BSE_ALLOWED_ORIGINS: "${BSE_ALLOWED_ORIGINS:-}"
+      RUST_LOG: "info"
+    volumes:
+      - bse-data:/home/bse/data
+    networks: [bse]
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [server]
+    networks: [bse]
+
+volumes:
+  bse-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  bse:
+    driver: bridge
