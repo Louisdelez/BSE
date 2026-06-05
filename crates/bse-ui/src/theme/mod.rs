@@ -4,6 +4,7 @@
 //! egui widget picks up the Miro-inspired look automatically.
 
 pub mod colors;
+pub mod hot_reload;
 pub mod motion;
 pub mod typography;
 

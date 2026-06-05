@@ -15,6 +15,16 @@ bse-types.workspace = true
 eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts"] }
 egui-phosphor = "0.8"
 egui_extras = { version = "0.30", features = ["all_loaders", "svg"] }
+notify = { version = "6", optional = true }
+ron = { version = "0.8", optional = true }
+serde = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+[features]
+default = []
+# Dev-only : watch `assets/themes/*.ron` and reload tokens when they
+# change. Adds a `notify` watcher thread.
+hot-reload-tokens = ["dep:notify", "dep:ron", "dep:serde", "dep:tracing"]
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }

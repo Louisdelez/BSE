@@ -1,0 +1,29 @@
+// Dark-mode token override.
+(
+    name: "BSE Dark",
+    colors: (
+        brand_yellow:    "#d9b128",
+        brand_blue:      "#5b76fe",
+        ink:             "#ffffff",
+        canvas:          "#0e0e10",
+        surface:         "#18181b",
+        hairline:        "#2e2e33",
+        success:         "#00b473",
+        warning:         "#e69a00",
+        error:           "#e63a46",
+    ),
+    radii: (
+        sm: 4.0,
+        md: 8.0,
+        lg: 16.0,
+        xxxl: 28.0,
+        pill: 9999.0,
+    ),
+    spacing: (
+        xs:  4.0,
+        sm:  8.0,
+        md: 12.0,
+        lg: 16.0,
+        xl: 24.0,
+    ),
+)
