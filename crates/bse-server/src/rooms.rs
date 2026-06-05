@@ -6,7 +6,7 @@
 //!
 //! - room state survives a server restart,
 //! - a peer joining mid-session receives the latest snapshot it missed
-//!   via [`ServerMessage::Snapshot`] (see [`crate::ws::upgrade`]).
+//!   via [`bse_protocol::ServerMessage::Snapshot`] (see [`crate::ws::upgrade`]).
 //!
 //! Strategy is intentionally simple : whenever a peer broadcasts an
 //! `Op` payload we decode it as a [`bse_protocol::ClientMessage`] and,

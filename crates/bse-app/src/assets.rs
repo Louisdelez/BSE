@@ -83,7 +83,7 @@ impl AssetStore {
         self.ingest_bytes(bytes)
     }
 
-    /// Same as [`ingest_file`] but from in-memory bytes (clipboard paste, etc.).
+    /// Same as [`Self::ingest_file`] but from in-memory bytes (clipboard paste, etc.).
     pub fn ingest_bytes(&mut self, bytes: Vec<u8>) -> Result<(AssetId, u32, u32), AssetError> {
         let reader = ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format()?;
         let img = reader.decode()?;

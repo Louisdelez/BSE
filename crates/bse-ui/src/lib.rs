@@ -2,7 +2,7 @@
 //!
 //! Every widget here takes `egui` types directly and returns nothing,
 //! mutating state through `&mut` references. This keeps composition
-//! trivial inside [`eframe::App::update`](eframe::App::update).
+//! trivial inside [`eframe::App::update`].
 
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]

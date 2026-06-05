@@ -81,7 +81,7 @@ pub enum ElementKind {
         /// Font size in world units. Default `16.0`.
         font_size: f32,
     },
-    /// Raster image. Bytes live in the app's [`AssetStore`] (not in the CRDT).
+    /// Raster image. Bytes live in the app's `AssetStore` (not in the CRDT).
     Image {
         /// Identifier of the asset blob in the asset store.
         asset_id: bse_types::AssetId,

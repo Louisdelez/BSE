@@ -4,8 +4,8 @@
 //! its elements, their style, the camera state, and the scene container.
 //!
 //! These types are **purely data** : no I/O, no CRDT, no rendering.
-//! The CRDT layer ([`bse-crdt`]) wraps them and the renderer
-//! ([`bse-render`]) consumes them.
+//! The `bse-crdt` layer wraps them and the `bse-render` crate
+//! consumes them.
 
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
