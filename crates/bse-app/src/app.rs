@@ -18,6 +18,7 @@ use tracing::{info, warn};
 use crate::APP_INFO;
 use crate::assets::AssetStore;
 use crate::canvas;
+use crate::project_io;
 
 const SPATIAL_HALF_EXTENT: f32 = 1_000_000.0;
 const SPATIAL_MAX_ITEMS_PER_LEAF: usize = 16;
@@ -178,6 +179,25 @@ impl BseApp {
             .unwrap_or_else(Instant::now);
         self.autosave_if_due();
     }
+
+    /// React to Ctrl+S (save as) and Ctrl+O (open) keyboard shortcuts.
+    fn handle_file_shortcuts(&mut self, ctx: &egui::Context) {
+        let (save, open) = ctx.input(|i| {
+            let cmd = i.modifiers.command;
+            (
+                cmd && i.key_pressed(egui::Key::S),
+                cmd && i.key_pressed(egui::Key::O),
+            )
+        });
+        if save {
+            project_io::save_as_dialog(&self.crdt, "untitled");
+        } else if open && project_io::open_dialog(&mut self.crdt).is_some() {
+            // Reset transient UI state and force one autosave so the
+            // local cache reflects the freshly-loaded document.
+            self.canvas.tool_state = bse_canvas::ToolState::Idle;
+            self.force_save();
+        }
+    }
 }
 
 fn open_default_storage() -> Option<SqliteStorage> {
@@ -203,6 +223,7 @@ fn open_default_storage() -> Option<SqliteStorage> {
 impl eframe::App for BseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
+        self.handle_file_shortcuts(ctx);
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();
 
