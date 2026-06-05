@@ -62,6 +62,11 @@ pub fn tool_preview(
             }
         }
         ToolState::DrawingStroke { points } => {
+            // Match the screen-space sizing used at commit time
+            // (see `commit_stroke` invocation in canvas::input). The
+            // preview uses world-space size = chosen_size / zoom so
+            // the drag visual matches the final stored element.
+            let zoom = canvas.camera.zoom.max(0.0001);
             paint_stroke_outline(
                 painter,
                 rect,
@@ -69,7 +74,7 @@ pub fn tool_preview(
                 viewport,
                 points,
                 canvas.pen_style.color,
-                canvas.pen_style.size,
+                canvas.pen_style.size / zoom,
             );
         }
     }

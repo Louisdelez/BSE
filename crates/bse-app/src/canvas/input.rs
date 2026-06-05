@@ -170,10 +170,20 @@ fn handle_pen_drag(
     } else if response.drag_stopped_by(PointerButton::Primary)
         && let ToolState::DrawingStroke { points } =
             std::mem::replace(&mut canvas.tool_state, ToolState::Idle)
-        && let Some(element) = draw::commit_stroke(&points, canvas.pen_style.clone())
-        && let Err(err) = crdt.upsert_element(element)
     {
-        warn!(target: "bse::canvas", error = %err, "stroke upsert failed");
+        // The size the user picked is intuitively a "screen pixel"
+        // value : a stroke of size 8 should look the same at 100% and
+        // 5000% zoom. We store the *world-space* equivalent on the
+        // element so that other peers and other zoom levels render it
+        // consistently.
+        let zoom = canvas.camera.zoom.max(0.0001);
+        let mut style = canvas.pen_style.clone();
+        style.size /= zoom;
+        if let Some(element) = draw::commit_stroke(&points, style)
+            && let Err(err) = crdt.upsert_element(element)
+        {
+            warn!(target: "bse::canvas", error = %err, "stroke upsert failed");
+        }
     }
 }
 
