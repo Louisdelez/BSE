@@ -6,17 +6,16 @@
 //! [`SyncHandle`] is the egui-side entry point : it owns one channel
 //! for commands (egui → worker) and one for events (worker → egui).
 //!
-//! v010.3 wires CRDT ops over the same WebSocket :
-//! - cursor throttling at 30 Hz (already done by `bse-sync::LocalCursor`),
-//! - remote peer cursors decoded from awareness messages,
-//! - `SyncCmd::Op` ships a freshly-encoded CRDT snapshot to the room,
-//! - inbound `ServerMessage::Op` / `Snapshot` are surfaced as
-//!   `SyncEvent::RemoteOp` for the egui side to apply.
-//!
-//! Reconnect logic is still deferred ; the worker loop drops the
-//! connection on any stream error and waits for a fresh `Connect`.
+//! v019 adds resilience :
+//! - the last [`ClientConfig`] is remembered and replayed automatically
+//!   when the stream dies (network blip, server restart, …) ;
+//! - retries use exponential backoff (`INITIAL_BACKOFF` → `MAX_BACKOFF`)
+//!   and surface `ConnectionState::Reconnecting` to the UI ;
+//! - `SyncCmd::Op` payloads emitted while offline are queued and
+//!   replayed once the next connection is established.
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -26,10 +25,16 @@ use bse_types::{Color, PeerId, Vec2};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tracing::{info, warn};
 
+/// First backoff delay after a failed connect / lost connection.
+const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
+/// Backoff cap : we never wait longer than this between attempts.
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// How many op payloads we keep buffered while offline before dropping
+/// the oldest. Each op is the full CRDT snapshot, so duplicates are
+/// fine ; only the last one matters.
+const MAX_OP_QUEUE: usize = 64;
+
 /// Egui → worker commands.
-///
-/// `Disconnect` is part of the public surface but is not yet wired
-/// from the UI ; a future settings dialog will use it.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum SyncCmd {
@@ -39,7 +44,7 @@ pub enum SyncCmd {
     Cursor(Vec2),
     /// Broadcast a fresh CRDT snapshot/update to the room.
     Op(Vec<u8>),
-    /// Politely close the connection.
+    /// Politely close the connection and stop auto-reconnecting.
     Disconnect,
 }
 
@@ -109,61 +114,95 @@ fn run_worker(cmd_rx: UnboundedReceiver<SyncCmd>, event_tx: UnboundedSender<Sync
     rt.block_on(worker_loop(cmd_rx, event_tx));
 }
 
-async fn worker_loop(mut cmd_rx: UnboundedReceiver<SyncCmd>, event_tx: UnboundedSender<SyncEvent>) {
-    let mut client: Option<SyncClient> = None;
-    let mut local_cursor = LocalCursor::new();
-    let mut peer_names: HashMap<PeerId, Arc<str>> = HashMap::new();
+/// Internal worker-loop state.
+///
+/// Held in a single struct so the `match` arms below can mutate parts
+/// of it without juggling a dozen local variables.
+struct WorkerState {
+    client: Option<SyncClient>,
+    /// Last config seen on `SyncCmd::Connect`. Used to retry after a
+    /// connection drop.
+    last_config: Option<ClientConfig>,
+    /// `true` when the user explicitly asked for disconnect ; suppresses
+    /// auto-reconnect attempts.
+    user_disconnected: bool,
+    /// Current backoff delay. Doubles on each failed attempt, capped.
+    backoff: Duration,
+    /// `Some(t)` while waiting for the backoff window to elapse ;
+    /// `None` when not in a reconnect cycle.
+    next_attempt_at: Option<Instant>,
+    /// Ops emitted while offline ; flushed on (re)connect.
+    pending_ops: VecDeque<Vec<u8>>,
+    local_cursor: LocalCursor,
+    peer_names: HashMap<PeerId, Arc<str>>,
+    last_cursor_emit: Instant,
+    pending_cursor: Option<Vec2>,
+}
+
+impl WorkerState {
+    fn new() -> Self {
+        Self {
+            client: None,
+            last_config: None,
+            user_disconnected: false,
+            backoff: INITIAL_BACKOFF,
+            next_attempt_at: None,
+            pending_ops: VecDeque::new(),
+            local_cursor: LocalCursor::new(),
+            peer_names: HashMap::new(),
+            last_cursor_emit: Instant::now(),
+            pending_cursor: None,
+        }
+    }
+
+    fn enqueue_op(&mut self, bytes: Vec<u8>) {
+        if self.pending_ops.len() >= MAX_OP_QUEUE {
+            self.pending_ops.pop_front();
+        }
+        self.pending_ops.push_back(bytes);
+    }
+
+    fn bump_backoff(&mut self) {
+        self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
+    }
+
+    fn reset_backoff(&mut self) {
+        self.backoff = INITIAL_BACKOFF;
+        self.next_attempt_at = None;
+    }
+}
+
+async fn worker_loop(
+    mut cmd_rx: UnboundedReceiver<SyncCmd>,
+    event_tx: UnboundedSender<SyncEvent>,
+) {
+    let mut state = WorkerState::new();
     let mut interval = tokio::time::interval(Duration::from_millis(33));
-    let mut last_cursor_emit = Instant::now();
-    let mut pending_cursor: Option<Vec2> = None;
 
     let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
 
     loop {
         interval.tick().await;
 
-        // Drain pending commands.
+        // 1. Drain pending commands.
         while let Ok(cmd) = cmd_rx.try_recv() {
-            match cmd {
-                SyncCmd::Connect(config) => {
-                    let _ = event_tx.send(SyncEvent::State(ConnectionState::Connecting));
-                    match SyncClient::connect(config).await {
-                        Ok(c) => {
-                            info!(target: "bse::sync", "connected");
-                            client = Some(c);
-                            let _ = event_tx.send(SyncEvent::State(ConnectionState::Connected));
-                        }
-                        Err(err) => {
-                            warn!(target: "bse::sync", error = %err, "connect failed");
-                            client = None;
-                            let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
-                        }
-                    }
-                }
-                SyncCmd::Cursor(pos) => {
-                    pending_cursor = Some(pos);
-                }
-                SyncCmd::Op(bytes) => {
-                    if let Some(c) = client.as_mut() {
-                        let payload = OpPayload { seq: 0, bytes };
-                        if let Err(err) = c.send_op(payload).await {
-                            warn!(target: "bse::sync", error = %err, "send_op failed");
-                        }
-                    }
-                }
-                SyncCmd::Disconnect => {
-                    if let Some(c) = client.take() {
-                        let _ = c.close().await;
-                    }
-                    let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
-                }
-            }
+            handle_cmd(cmd, &mut state, &event_tx).await;
         }
 
-        // Emit the throttled cursor if we have a connection.
-        if let (Some(pos), Some(c)) = (pending_cursor, client.as_mut())
-            && last_cursor_emit.elapsed() >= Duration::from_millis(33)
-            && let Some(bytes) = local_cursor.maybe_emit(pos)
+        // 2. Attempt reconnect if the backoff window has elapsed.
+        if state.client.is_none()
+            && !state.user_disconnected
+            && let Some(at) = state.next_attempt_at
+            && Instant::now() >= at
+            && let Some(config) = state.last_config.clone()
+        {
+            attempt_connect(config, &mut state, &event_tx).await;
+        }
+
+        // 3. Emit the throttled cursor if we have a connection.
+        if let (Some(pos), Some(c)) = (state.pending_cursor, state.client.as_mut())
+            && state.last_cursor_emit.elapsed() >= Duration::from_millis(33)
+            && let Some(bytes) = state.local_cursor.maybe_emit(pos)
         {
             let payload = AwarenessPayload {
                 peer_id: PeerId::new(),
@@ -172,26 +211,119 @@ async fn worker_loop(mut cmd_rx: UnboundedReceiver<SyncCmd>, event_tx: Unbounded
             if let Err(err) = c.send_awareness(payload).await {
                 warn!(target: "bse::sync", error = %err, "send_awareness failed");
             }
-            last_cursor_emit = Instant::now();
-            pending_cursor = None;
+            state.last_cursor_emit = Instant::now();
+            state.pending_cursor = None;
         }
 
-        // Pull pending server messages.
-        if let Some(c) = client.as_mut() {
+        // 4. Pull pending server messages.
+        if let Some(c) = state.client.as_mut() {
+            let mut drop_client = false;
             loop {
                 match c.next_message().await {
-                    Ok(Some(msg)) => translate_message(msg, &event_tx, &mut peer_names),
+                    Ok(Some(msg)) => translate_message(msg, &event_tx, &mut state.peer_names),
                     Ok(None) => break,
                     Err(err) => {
-                        warn!(target: "bse::sync", error = %err, "stream error, dropping connection");
-                        client = None;
-                        let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
+                        warn!(target: "bse::sync", error = %err, "stream error, will reconnect");
+                        drop_client = true;
                         break;
                     }
                 }
             }
+            if drop_client {
+                state.client = None;
+                if state.last_config.is_some() && !state.user_disconnected {
+                    schedule_reconnect(&mut state, &event_tx);
+                } else {
+                    let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
+                }
+            }
         }
     }
+}
+
+async fn handle_cmd(
+    cmd: SyncCmd,
+    state: &mut WorkerState,
+    event_tx: &UnboundedSender<SyncEvent>,
+) {
+    match cmd {
+        SyncCmd::Connect(config) => {
+            state.last_config = Some(config.clone());
+            state.user_disconnected = false;
+            state.reset_backoff();
+            attempt_connect(config, state, event_tx).await;
+        }
+        SyncCmd::Cursor(pos) => {
+            state.pending_cursor = Some(pos);
+        }
+        SyncCmd::Op(bytes) => {
+            if let Some(c) = state.client.as_mut() {
+                let payload = OpPayload {
+                    seq: 0,
+                    bytes: bytes.clone(),
+                };
+                if let Err(err) = c.send_op(payload).await {
+                    warn!(target: "bse::sync", error = %err, "send_op failed ; queueing for retry");
+                    state.enqueue_op(bytes);
+                    state.client = None;
+                    schedule_reconnect(state, event_tx);
+                }
+            } else {
+                state.enqueue_op(bytes);
+            }
+        }
+        SyncCmd::Disconnect => {
+            state.user_disconnected = true;
+            state.last_config = None;
+            state.next_attempt_at = None;
+            if let Some(c) = state.client.take() {
+                let _ = c.close().await;
+            }
+            let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
+        }
+    }
+}
+
+async fn attempt_connect(
+    config: ClientConfig,
+    state: &mut WorkerState,
+    event_tx: &UnboundedSender<SyncEvent>,
+) {
+    let _ = event_tx.send(SyncEvent::State(ConnectionState::Connecting));
+    match SyncClient::connect(config).await {
+        Ok(mut c) => {
+            info!(target: "bse::sync", "connected");
+            // Replay any ops queued while offline.
+            let queue = std::mem::take(&mut state.pending_ops);
+            for bytes in queue {
+                let payload = OpPayload { seq: 0, bytes };
+                if let Err(err) = c.send_op(payload).await {
+                    warn!(target: "bse::sync", error = %err, "send_op (replay) failed");
+                    break;
+                }
+            }
+            state.client = Some(c);
+            state.reset_backoff();
+            let _ = event_tx.send(SyncEvent::State(ConnectionState::Connected));
+        }
+        Err(err) => {
+            warn!(target: "bse::sync", error = %err, "connect failed");
+            state.client = None;
+            schedule_reconnect(state, event_tx);
+        }
+    }
+}
+
+fn schedule_reconnect(state: &mut WorkerState, event_tx: &UnboundedSender<SyncEvent>) {
+    if state.user_disconnected || state.last_config.is_none() {
+        let _ = event_tx.send(SyncEvent::State(ConnectionState::Offline));
+        return;
+    }
+    let delay = state.backoff;
+    state.next_attempt_at = Some(Instant::now() + delay);
+    state.bump_backoff();
+    info!(target: "bse::sync", delay_secs = delay.as_secs(), "scheduling reconnect");
+    let _ = event_tx.send(SyncEvent::State(ConnectionState::Reconnecting));
 }
 
 fn translate_message(
@@ -224,10 +356,6 @@ fn translate_message(
             let _ = event_tx.send(SyncEvent::RemoteOp(op.bytes));
         }
         ServerMessage::Snapshot(s) => {
-            // v010.3 : the server broadcasts our own client-emitted
-            // snapshots as `Op`, but a real server may also push a
-            // `Snapshot` on join. Yrs accepts both formats indifferently
-            // through `apply_remote_update`.
             let _ = event_tx.send(SyncEvent::RemoteOp(s.bytes));
         }
         ServerMessage::Welcome(_) | ServerMessage::Error(_) | ServerMessage::Pong(_) => {}
