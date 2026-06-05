@@ -34,9 +34,23 @@ use crate::project_io;
 use crate::room_picker::RoomPicker;
 use crate::sync_thread::{SyncCmd, SyncEvent, SyncHandle};
 
-const SPATIAL_HALF_EXTENT: f32 = 1_000_000.0;
+/// Half-extent of the spatial quadtree bounds, in world units.
+///
+/// Set to 10 million (10×10^6) so the canvas effectively feels
+/// infinite : at the default zoom, that's enough world space to fit
+/// roughly 18×18 km of content, ie. you'd need to *pan* for hours to
+/// hit the boundary.
+///
+/// We cap here rather than going to `f32::MAX` because `f32` has 7
+/// significant digits of precision : beyond 10^7 the pen strokes
+/// would visibly jitter on each redraw. The next bump-up would
+/// require a "floating origin" rebase pass (shift everything back to
+/// the local viewport every so often), tracked as future work.
+const SPATIAL_HALF_EXTENT: f32 = 10_000_000.0;
 const SPATIAL_MAX_ITEMS_PER_LEAF: usize = 16;
-const SPATIAL_MAX_DEPTH: u32 = 10;
+/// Max depth of the quadtree. Bumped from 10 (with ±1M extent) to 14
+/// to keep leaf cells ~600 world units across at the new ±10M extent.
+const SPATIAL_MAX_DEPTH: u32 = 14;
 
 /// Key used to autosave the current document in `SqliteStorage`.
 const AUTOSAVE_KEY: &str = "current-project";

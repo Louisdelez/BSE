@@ -7,8 +7,12 @@
 
 use bse_types::Vec2;
 
-/// Tolerance used to compare points for equality. Matches the
-/// `0.0001` constant used internally by perfect-freehand.
+/// Default tolerance used by [`approx_eq`] when no size context is
+/// available. Matches the `0.0001` constant used internally by
+/// perfect-freehand. The stroke algorithm now scales this with the
+/// pen's world-space size via [`approx_eq_with`] — see the call site
+/// in `stroke_points.rs` for the rationale.
+#[allow(dead_code)] // kept for symmetry with the TS original + the in-crate test helpers
 pub(crate) const EQUAL_EPSILON: f32 = 1.0e-4;
 
 /// `PI` with a tiny offset, mirroring perfect-freehand's `FIXED_PI`.
@@ -74,8 +78,22 @@ pub(crate) fn rot_around(a: Vec2, c: Vec2, r: f32) -> Vec2 {
 /// Component-wise equality within [`EQUAL_EPSILON`].
 #[inline]
 #[must_use]
+#[allow(dead_code)] // kept for symmetry with the TS original
 pub(crate) fn approx_eq(a: Vec2, b: Vec2) -> bool {
-    (a.x - b.x).abs() < EQUAL_EPSILON && (a.y - b.y).abs() < EQUAL_EPSILON
+    approx_eq_with(a, b, EQUAL_EPSILON)
+}
+
+/// Component-wise equality within a caller-provided epsilon.
+///
+/// Used by the stroke algorithm to scale its "are these two samples
+/// the same point" threshold with the stroke's *world-space* size :
+/// at extreme zoom-in the user-chosen pen size collapses to fractions
+/// of a world unit, and a fixed `EQUAL_EPSILON = 1e-4` would silently
+/// drop every legitimate input sample.
+#[inline]
+#[must_use]
+pub(crate) fn approx_eq_with(a: Vec2, b: Vec2, epsilon: f32) -> bool {
+    (a.x - b.x).abs() < epsilon && (a.y - b.y).abs() < epsilon
 }
 
 #[cfg(test)]

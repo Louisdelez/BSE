@@ -6,7 +6,7 @@
 use bse_types::Vec2;
 
 use crate::options::{InputPoint, StrokeOptions};
-use crate::vec::{approx_eq, uni};
+use crate::vec::{approx_eq_with, uni};
 
 /// Default pressure for the first point. Lower than the rest to
 /// avoid a fat start since real strokes always begin slow.
@@ -107,11 +107,21 @@ pub(crate) fn get_stroke_points(
     let mut prev_point = stroke_points[0].point;
     let max = pts.len() - 1;
 
+    // Scale the "same point" epsilon with the pen size so the
+    // algorithm behaves identically at any zoom level. At 5000% zoom
+    // the user-chosen size collapses to ~0.16 world units ; the legacy
+    // `EQUAL_EPSILON = 1e-4` would still trigger on legitimate mouse
+    // samples ~0.02-0.05 world units apart, dropping them and
+    // producing visible gaps. A size-relative epsilon of `size * 1e-3`
+    // is small enough to admit those samples while still de-duping
+    // exact duplicates.
+    let dedup_epsilon = (options.size * 1e-3).max(f32::EPSILON * 8.0);
+
     for (i, raw_input) in pts.iter().enumerate().skip(1) {
         let raw = Vec2::new(raw_input.x, raw_input.y);
         let point = prev_point + (raw - prev_point) * t;
 
-        if approx_eq(prev_point, point) {
+        if approx_eq_with(prev_point, point, dedup_epsilon) {
             continue;
         }
 
