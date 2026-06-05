@@ -7,6 +7,7 @@
 
 use std::sync::mpsc;
 
+use bse_ui::{Card, Modal, PillButton, theme::colors, theme::typography};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -210,7 +211,6 @@ impl RoomPicker {
 
     /// Render the picker as a modal window. Returns the picked room id
     /// when the user clicks "Join" on a row.
-    #[allow(clippy::too_many_lines)]
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -223,129 +223,257 @@ impl RoomPicker {
             self.kick_off_fetch(server_http_base, access_token);
         }
 
+        Modal::new("room_picker")
+            .title("Choose a room")
+            .min_width(480.0)
+            .max_width(560.0)
+            .show(ctx, |ui| self.body(ui, server_http_base, access_token))
+            .inner
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn body(
+        &mut self,
+        ui: &mut egui::Ui,
+        server_http_base: &str,
+        access_token: &str,
+    ) -> Option<String> {
         let mut chosen: Option<String> = None;
-        egui::Window::new("Choose a room")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.set_min_width(380.0);
-                ui.label("Pick a room to enter, or create a new one.");
-                ui.add_space(6.0);
 
-                ui.heading("Your rooms");
-                if self.rooms.is_empty() && !self.busy() {
-                    ui.small("No rooms yet — create your first one below.");
-                }
-                let rooms = self.rooms.clone();
-                let mut invite_clicked: Option<String> = None;
-                egui::ScrollArea::vertical()
-                    .max_height(220.0)
-                    .show(ui, |ui| {
-                        for r in &rooms {
-                            ui.horizontal(|ui| {
-                                ui.label(format!("{} ({})", r.name, r.role));
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.small_button("Join").clicked() {
-                                            chosen = Some(r.id.clone());
-                                        }
-                                        if r.role == "owner"
-                                            && ui.small_button("Invite").clicked()
-                                        {
-                                            invite_clicked = Some(r.id.clone());
-                                        }
-                                    },
-                                );
-                            });
-                            if self.invite_target.as_deref() == Some(r.id.as_str()) {
-                                ui.indent("invite_form", |ui| {
-                                    ui.label(format!("Invite a member to {}", r.name));
-                                    ui.add_enabled(
-                                        !self.busy(),
-                                        egui::TextEdit::singleline(&mut self.invite_email)
-                                            .hint_text("email@example.com")
-                                            .desired_width(f32::INFINITY),
-                                    );
-                                    ui.horizontal(|ui| {
-                                        let send = ui
-                                            .add_enabled(
-                                                !self.busy()
-                                                    && !self.invite_email.trim().is_empty(),
-                                                egui::Button::new("Send invite"),
-                                            )
-                                            .clicked();
-                                        if send {
-                                            let email = self.invite_email.trim().to_string();
-                                            self.kick_off_invite(
-                                                server_http_base,
-                                                access_token,
-                                                &r.id,
-                                                &email,
-                                            );
-                                        }
-                                        if ui.small_button("Close").clicked() {
-                                            self.invite_target = None;
-                                            self.invite_email.clear();
-                                            self.invite_notice.clear();
-                                        }
-                                    });
-                                    if !self.invite_notice.is_empty() {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(0x00, 0xB4, 0x73),
-                                            &self.invite_notice,
-                                        );
-                                    }
-                                });
-                            }
-                        }
-                    });
-                if let Some(id) = invite_clicked {
-                    self.invite_target = Some(id);
-                    self.invite_notice.clear();
-                }
+        ui.label(
+            egui::RichText::new("Pick a room to enter, or create a new one.")
+                .color(colors::SLATE)
+                .font(typography::size::body_md()),
+        );
+        ui.add_space(20.0);
 
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(6.0);
-                ui.heading("Create a room");
-                ui.add_enabled(
-                    !self.busy(),
-                    egui::TextEdit::singleline(&mut self.new_name)
-                        .hint_text("Room name")
-                        .desired_width(f32::INFINITY),
-                );
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    let create = ui
-                        .add_enabled(
-                            !self.busy() && !self.new_name.trim().is_empty(),
-                            egui::Button::new("Create"),
-                        )
-                        .clicked();
-                    if create {
-                        let name = self.new_name.trim().to_string();
-                        self.kick_off_create(server_http_base, access_token, &name);
-                    }
-                    let refresh = ui
-                        .add_enabled(!self.busy(), egui::Button::new("Refresh"))
-                        .clicked();
-                    if refresh {
-                        self.kick_off_fetch(server_http_base, access_token);
-                    }
-                    if self.busy() {
-                        ui.spinner();
-                    }
-                });
+        section_heading(ui, "Your rooms");
+        ui.add_space(8.0);
 
-                if !self.error.is_empty() {
-                    ui.add_space(4.0);
-                    ui.colored_label(egui::Color32::from_rgb(0xE6, 0x3A, 0x46), &self.error);
+        if self.rooms.is_empty() && !self.busy() {
+            ui.label(
+                egui::RichText::new("No rooms yet — create your first one below.")
+                    .color(colors::STEEL)
+                    .font(typography::size::body_sm()),
+            );
+            ui.add_space(8.0);
+        }
+
+        let rooms = self.rooms.clone();
+        let mut invite_clicked: Option<String> = None;
+        egui::ScrollArea::vertical()
+            .max_height(280.0)
+            .show(ui, |ui| {
+                for r in &rooms {
+                    self.render_room_row(ui, r, &mut chosen, &mut invite_clicked);
+                    if self.invite_target.as_deref() == Some(r.id.as_str()) {
+                        self.render_invite_form(ui, r, server_http_base, access_token);
+                    }
+                    ui.add_space(8.0);
                 }
             });
+        if let Some(id) = invite_clicked {
+            self.invite_target = Some(id);
+            self.invite_notice.clear();
+        }
+
+        ui.add_space(16.0);
+        ui.separator();
+        ui.add_space(16.0);
+
+        section_heading(ui, "Create a room");
+        ui.add_space(8.0);
+        ui.add_enabled(
+            !self.busy(),
+            egui::TextEdit::singleline(&mut self.new_name)
+                .hint_text("Room name")
+                .desired_width(f32::INFINITY)
+                .margin(egui::vec2(12.0, 10.0))
+                .font(typography::size::body_md()),
+        );
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            let create_clicked = ui
+                .add(
+                    PillButton::primary("Create")
+                        .enabled(!self.busy() && !self.new_name.trim().is_empty())
+                        .min_size(egui::vec2(0.0, 40.0))
+                        .id_source("rooms_create"),
+                )
+                .clicked();
+            if create_clicked {
+                let name = self.new_name.trim().to_string();
+                self.kick_off_create(server_http_base, access_token, &name);
+            }
+            ui.add_space(8.0);
+            if ui
+                .add(
+                    PillButton::secondary("Refresh")
+                        .enabled(!self.busy())
+                        .min_size(egui::vec2(0.0, 40.0))
+                        .id_source("rooms_refresh"),
+                )
+                .clicked()
+            {
+                self.kick_off_fetch(server_http_base, access_token);
+            }
+            if self.busy() {
+                ui.add_space(8.0);
+                ui.spinner();
+            }
+        });
+
+        if !self.error.is_empty() {
+            ui.add_space(10.0);
+            ui.label(
+                egui::RichText::new(&self.error)
+                    .color(colors::ERROR_TEXT)
+                    .font(typography::size::body_sm()),
+            );
+        }
+
         chosen
     }
+
+    #[allow(clippy::unused_self)] // kept on Self for symmetry with the other render_* methods
+    fn render_room_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        room: &RoomEntry,
+        chosen: &mut Option<String>,
+        invite_clicked: &mut Option<String>,
+    ) {
+        Card::base().padding(16.0).radius(12.0).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(&room.name)
+                            .color(colors::INK)
+                            .font(typography::size::heading_5())
+                            .strong(),
+                    );
+                    ui.add_space(2.0);
+                    let (role_label, role_color) = if room.role == "owner" {
+                        ("Owner", colors::SUCCESS)
+                    } else {
+                        ("Member", colors::STEEL)
+                    };
+                    ui.label(
+                        egui::RichText::new(role_label)
+                            .color(role_color)
+                            .font(typography::size::caption())
+                            .strong(),
+                    );
+                });
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        if ui
+                            .add(
+                                PillButton::primary("Join")
+                                    .min_size(egui::vec2(70.0, 36.0))
+                                    .id_source(&format!("join-{}", room.id)),
+                            )
+                            .clicked()
+                        {
+                            *chosen = Some(room.id.clone());
+                        }
+                        if room.role == "owner" {
+                            ui.add_space(6.0);
+                            if ui
+                                .add(
+                                    PillButton::secondary("Invite")
+                                        .min_size(egui::vec2(72.0, 36.0))
+                                        .id_source(&format!("invite-{}", room.id)),
+                                )
+                                .clicked()
+                            {
+                                *invite_clicked = Some(room.id.clone());
+                            }
+                        }
+                    },
+                );
+            });
+        });
+    }
+
+    fn render_invite_form(
+        &mut self,
+        ui: &mut egui::Ui,
+        room: &RoomEntry,
+        server_http_base: &str,
+        access_token: &str,
+    ) {
+        ui.add_space(4.0);
+        Card::base()
+            .padding(16.0)
+            .radius(12.0)
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(format!("Invite a member to {}", room.name))
+                        .color(colors::SLATE)
+                        .font(typography::size::body_sm())
+                        .strong(),
+                );
+                ui.add_space(8.0);
+                ui.add_enabled(
+                    !self.busy(),
+                    egui::TextEdit::singleline(&mut self.invite_email)
+                        .hint_text("email@example.com")
+                        .desired_width(f32::INFINITY)
+                        .margin(egui::vec2(12.0, 10.0))
+                        .font(typography::size::body_md()),
+                );
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            PillButton::primary("Send invite")
+                                .enabled(
+                                    !self.busy() && !self.invite_email.trim().is_empty(),
+                                )
+                                .min_size(egui::vec2(0.0, 36.0))
+                                .id_source(&format!("invite-send-{}", room.id)),
+                        )
+                        .clicked()
+                    {
+                        let email = self.invite_email.trim().to_string();
+                        self.kick_off_invite(server_http_base, access_token, &room.id, &email);
+                    }
+                    ui.add_space(8.0);
+                    if ui
+                        .add(
+                            PillButton::ghost("Close")
+                                .min_size(egui::vec2(0.0, 36.0))
+                                .id_source(&format!("invite-close-{}", room.id)),
+                        )
+                        .clicked()
+                    {
+                        self.invite_target = None;
+                        self.invite_email.clear();
+                        self.invite_notice.clear();
+                    }
+                });
+                if !self.invite_notice.is_empty() {
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(&self.invite_notice)
+                            .color(colors::SUCCESS)
+                            .font(typography::size::body_sm()),
+                    );
+                }
+            });
+    }
+}
+
+fn section_heading(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .color(colors::INK)
+            .font(typography::size::heading_5())
+            .strong(),
+    );
 }
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {
