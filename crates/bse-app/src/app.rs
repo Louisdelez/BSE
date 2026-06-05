@@ -636,12 +636,14 @@ impl eframe::App for BseApp {
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                toolbar(ui, &mut self.canvas);
+        // Top panel keeps only the account widget (right-aligned) so
+        // the canvas runs full-height. The tool picker is drawn as a
+        // floating bottom-centered bar inside the CentralPanel.
+        egui::TopBottomPanel::top("account_bar")
+            .exact_height(44.0)
+            .show(ctx, |ui| {
                 self.render_account_widget(ui);
             });
-        });
 
         let connection = match self.connection_state {
             ConnectionState::Offline => ConnectionStatus::Offline,
@@ -675,6 +677,8 @@ impl eframe::App for BseApp {
                 &mut self.assets,
                 &self.peers,
             );
+            // Floating tool picker centered-bottom on top of the canvas.
+            toolbar(ui, &mut self.canvas);
             canvas_rect = ui.min_rect();
         });
 
