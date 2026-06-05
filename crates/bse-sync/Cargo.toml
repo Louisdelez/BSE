@@ -11,8 +11,17 @@ description = "WebSocket sync client for BSE."
 [dependencies]
 bse-protocol.workspace = true
 bse-types.workspace = true
+futures-util = "0.3"
+rmp-serde = "1"
+serde.workspace = true
 thiserror.workspace = true
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.24"
 tracing.workspace = true
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "test-util", "time"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
