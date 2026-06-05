@@ -8,11 +8,41 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v009` :
-- `bse-crdt::YrsBackend` — code prêt par agent
-
 À venir dans `v011` :
 - `bse-storage::SqliteStorage` — code prêt par agent
+
+---
+
+## [v009] — 2026-06-05
+
+### 🔄 CRDT temps réel — `YrsBackend`
+
+Remplace le `InMemoryBackend` placeholder par une vraie implémentation
+basée sur **yrs** (port Rust de Y-CRDT / Yjs). Deux peers peuvent
+désormais converger sur des éditions concurrentes via `apply_remote_update`.
+
+### 🎉 Added (par agent en parallèle)
+
+**`bse-crdt`**
+- Nouveau module `yrs_backend.rs` (252 lignes) avec `YrsBackend`.
+- Stratégie de stockage : un `MapRef` racine `"elements"`, valeurs =
+  blob JSON dans `yrs::Any::String`. Documenté + `TODO(v009.1)` pour
+  passer à un schéma per-field plus tard.
+- Snapshot encoding : `encode_state_as_update_v2`.
+- `apply_remote_update` décode v2 et applique en transaction.
+
+### ✅ Tests
+- 6 unit tests : empty backend, get/remove missing, upsert replace,
+  roundtrip, count.
+- **3 integration tests** dans `tests/yrs_convergence.rs` :
+  - `two_yrs_backends_converge_on_concurrent_edits` ✓
+  - `snapshot_roundtrip_preserves_elements` ✓
+  - `concurrent_remove_after_sync_propagates` ✓
+
+### 🛠 Version pinning
+- **yrs 0.23** (au lieu de 0.27 initialement testée) : 0.27 utilise des
+  `if let` guards qui ne sont pas stable sur Rust 1.94. À remonter quand
+  ces features seront stabilisées.
 
 ---
 
