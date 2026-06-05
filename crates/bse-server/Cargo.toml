@@ -21,8 +21,12 @@ axum = { version = "0.7", features = ["ws"] }
 bse-auth.workspace = true
 bse-protocol.workspace = true
 bse-types.workspace = true
+rmp-serde = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }

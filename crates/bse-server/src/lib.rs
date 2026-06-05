@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod rooms;
 pub mod routes;
 pub mod state;
+pub mod store;
 pub mod users;
 pub mod ws;
 

@@ -1,18 +1,19 @@
-//! In-memory user store backed by `bse-auth` for password verification.
+//! User store backed by [`crate::store::ServerStore`].
 //!
-//! v016.1 stores users in a `RwLock<HashMap>` keyed by email. A future
-//! milestone will move this to `PostgreSQL` via `bse-storage`. The whole
-//! file is `~120` lines and lives behind a small API that the auth
-//! handlers consume.
+//! This is a thin layer that turns the raw `SQLite` operations into the
+//! verb-shaped API the auth handlers consume : register, login,
+//! seed-on-empty. Passwords are hashed with Argon2id via `bse-auth`.
 
-use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::Arc;
 
 use bse_auth::{AuthError, hash_password, verify_password};
 use bse_types::UserId;
+use thiserror::Error;
+use tracing::warn;
 
-/// One user record. The plaintext password is never stored, only the
-/// Argon2id PHC hash.
+use crate::store::{ServerStore, ServerStoreError, UserRow};
+
+/// One user record returned from the store.
 #[derive(Clone, Debug)]
 pub struct UserRecord {
     /// Stable identifier.
@@ -25,79 +26,77 @@ pub struct UserRecord {
     pub password_hash: String,
 }
 
-/// In-memory user store.
-#[derive(Default)]
+impl From<UserRow> for UserRecord {
+    fn from(r: UserRow) -> Self {
+        Self {
+            id: r.id,
+            email: r.email,
+            display_name: r.display_name,
+            password_hash: r.password_hash,
+        }
+    }
+}
+
+/// Combined error returned by user operations.
+///
+/// Either the password backend (`AuthError`) or the database
+/// (`ServerStoreError`) can fail ; the handlers care about both.
+#[derive(Debug, Error)]
+pub enum UserStoreError {
+    /// Password hashing / verification failed.
+    #[error(transparent)]
+    Auth(#[from] AuthError),
+    /// Database backend failed.
+    #[error(transparent)]
+    Store(#[from] ServerStoreError),
+}
+
+/// Persistent user store.
+#[derive(Clone)]
 pub struct UserStore {
-    /// Keyed by lowercased email.
-    by_email: RwLock<HashMap<String, UserRecord>>,
+    store: Arc<ServerStore>,
 }
 
 impl UserStore {
-    /// Empty store.
+    /// Wrap a shared [`ServerStore`].
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(store: Arc<ServerStore>) -> Self {
+        Self { store }
     }
 
-    /// Seed a demo user at boot. Useful so the first run has a usable
-    /// account without registering through the API. Idempotent : if
-    /// the email is already present, nothing happens.
-    ///
-    /// Returns the user id of the seeded (or already-present) record.
+    /// Seed a demo user at boot if (and only if) the table is empty.
+    /// Idempotent across restarts thanks to the emptiness check.
     pub fn seed_if_empty(
         &self,
         email: &str,
         display_name: &str,
         password: &str,
-    ) -> Result<UserId, AuthError> {
-        {
-            let map = self.by_email.read().expect("user store read");
-            if let Some(existing) = map.get(&email.to_lowercase()) {
-                return Ok(existing.id);
-            }
+    ) -> Result<(), UserStoreError> {
+        if self.store.has_any_user()? {
+            return Ok(());
         }
         let hash = hash_password(password)?;
-        let id = UserId::new_v7();
-        let record = UserRecord {
-            id,
-            email: email.to_string(),
-            display_name: display_name.to_string(),
-            password_hash: hash,
-        };
-        self.by_email
-            .write()
-            .expect("user store write")
-            .insert(email.to_lowercase(), record);
-        Ok(id)
+        let inserted = self
+            .store
+            .insert_user(UserId::new_v7(), email, display_name, &hash)?;
+        if !inserted {
+            warn!(target: "bse::server::users", email, "seed user race lost ; ignoring");
+        }
+        Ok(())
     }
 
-    /// Register a brand-new user. Returns `None` if the email is taken.
+    /// Register a brand-new user. Returns `Ok(None)` if the email is
+    /// already taken.
     pub fn register(
         &self,
         email: &str,
         display_name: &str,
         password: &str,
-    ) -> Result<Option<UserId>, AuthError> {
-        let key = email.to_lowercase();
-        {
-            let map = self.by_email.read().expect("user store read");
-            if map.contains_key(&key) {
-                return Ok(None);
-            }
-        }
+    ) -> Result<Option<UserId>, UserStoreError> {
         let hash = hash_password(password)?;
         let id = UserId::new_v7();
-        let record = UserRecord {
-            id,
-            email: email.to_string(),
-            display_name: display_name.to_string(),
-            password_hash: hash,
-        };
-        self.by_email
-            .write()
-            .expect("user store write")
-            .insert(key, record);
-        Ok(Some(id))
+        let inserted = self.store.insert_user(id, email, display_name, &hash)?;
+        if inserted { Ok(Some(id)) } else { Ok(None) }
     }
 
     /// Verify credentials. Returns the matching record on success.
@@ -105,13 +104,12 @@ impl UserStore {
         &self,
         email: &str,
         password: &str,
-    ) -> Result<Option<UserRecord>, AuthError> {
-        let map = self.by_email.read().expect("user store read");
-        let Some(record) = map.get(&email.to_lowercase()) else {
+    ) -> Result<Option<UserRecord>, UserStoreError> {
+        let Some(row) = self.store.user_by_email(email)? else {
             return Ok(None);
         };
-        if verify_password(password, &record.password_hash)? {
-            Ok(Some(record.clone()))
+        if verify_password(password, &row.password_hash)? {
+            Ok(Some(row.into()))
         } else {
             Ok(None)
         }

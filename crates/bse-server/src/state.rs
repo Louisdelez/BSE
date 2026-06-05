@@ -1,19 +1,25 @@
 //! Shared application state injected into every axum handler.
 //!
-//! Holds the [`UserStore`], the [`JwtConfig`] and the [`RoomManager`].
+//! Holds the persistent [`ServerStore`], the [`UserStore`] wrapper, the
+//! [`JwtConfig`] and the [`RoomManager`].
 
 use std::sync::Arc;
 
 use bse_auth::{DEFAULT_ACCESS_TTL, DEFAULT_REFRESH_TTL, JwtConfig};
+use tracing::{error, info};
 
+use crate::config::ServerConfig;
 use crate::rooms::RoomManager;
+use crate::store::ServerStore;
 use crate::users::UserStore;
 
 /// Shared state injected into handlers as `axum::extract::State<AppState>`.
 #[derive(Clone)]
 pub struct AppState {
-    /// In-memory user store.
-    pub users: Arc<UserStore>,
+    /// SQLite-backed server store (users, room snapshots).
+    pub store: Arc<ServerStore>,
+    /// User-facing wrapper over [`ServerStore`].
+    pub users: UserStore,
     /// JWT configuration (secret, issuer, TTLs).
     pub jwt: Arc<JwtConfig>,
     /// Per-room broadcast registry (v010.2).
@@ -23,12 +29,30 @@ pub struct AppState {
 impl AppState {
     /// Build the state from the runtime config.
     ///
+    /// Opens (or creates) the `SQLite` database at
+    /// `{cfg.data_dir}/server.sqlite`, runs schema migrations, seeds a
+    /// demo user if and only if the `users` table is empty.
+    ///
     /// The JWT secret comes from the `BSE_JWT_SECRET` env var if set,
     /// otherwise a process-local pseudo-random secret is generated.
-    /// The latter is fine for development but useless for multi-instance
-    /// deployments — set `BSE_JWT_SECRET` in production.
+    /// The latter is fine for development but unsuitable for
+    /// multi-instance deployments — set `BSE_JWT_SECRET` in production.
     #[must_use]
-    pub fn build() -> Self {
+    pub fn from_config(cfg: &ServerConfig) -> Self {
+        let store = match ServerStore::open(&cfg.db_path()) {
+            Ok(s) => Arc::new(s),
+            Err(err) => {
+                error!(error = %err, path = %cfg.db_path().display(), "failed to open server store ; falling back to in-memory");
+                Arc::new(ServerStore::in_memory().expect("in-memory store always opens"))
+            }
+        };
+        let users = UserStore::new(Arc::clone(&store));
+        if let Err(err) = users.seed_if_empty("demo@bse.app", "Demo", "demo1234") {
+            error!(target: "bse::server::state", error = %err, "demo seed failed");
+        } else {
+            info!(target: "bse::server::state", "demo user seeded if empty");
+        }
+
         let secret = std::env::var("BSE_JWT_SECRET")
             .map_or_else(|_| derive_process_local_secret(), String::into_bytes);
         let jwt = JwtConfig {
@@ -37,15 +61,21 @@ impl AppState {
             access_ttl: DEFAULT_ACCESS_TTL,
             refresh_ttl: DEFAULT_REFRESH_TTL,
         };
-        let users = UserStore::new();
-        // Seed a demo user so first-run testing works without the
-        // (not yet exposed via UI) register endpoint.
-        let _ = users.seed_if_empty("demo@bse.app", "Demo", "demo1234");
+
+        let rooms = RoomManager::new(Arc::clone(&store));
+
         Self {
-            users: Arc::new(users),
+            store,
+            users,
             jwt: Arc::new(jwt),
-            rooms: RoomManager::new(),
+            rooms,
         }
+    }
+
+    /// Convenience builder using [`ServerConfig::from_env`].
+    #[must_use]
+    pub fn build() -> Self {
+        Self::from_config(&ServerConfig::from_env())
     }
 }
 

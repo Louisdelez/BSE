@@ -1,15 +1,11 @@
-//! WebSocket upgrade handler with per-room broadcast (v010.2).
+//! WebSocket upgrade handler with per-room broadcast (v010.2),
+//! optional JWT verification (v016.2), and snapshot replay (v018).
 //!
-//! Each connection is registered in the [`crate::rooms::RoomManager`]
-//! on upgrade. Inbound binary / text frames are fanned out to every
-//! other peer in the same room, replacing the per-connection echo loop
-//! used in v008.
-//!
-//! When `BSE_REQUIRE_AUTH=1` is set on the server, the upgrade also
-//! verifies the JWT passed as `?token=...` on the WebSocket URL
-//! before completing the handshake (v016.2). Without that env var the
-//! token is ignored and unauthenticated connections are accepted —
-//! suitable for local development only.
+//! Each connection joins the [`crate::rooms::RoomManager`] on upgrade.
+//! Inbound binary / text frames are fanned out to every other peer in
+//! the same room. Right after joining, the peer is sent the latest
+//! persisted snapshot via [`ServerMessage::Snapshot`] so it does not
+//! see an empty canvas when joining an active room.
 
 use axum::{
     extract::{
@@ -20,6 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bse_auth::TokenType;
+use bse_protocol::{OpPayload, ServerMessage};
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -34,12 +31,6 @@ pub struct WsParams {
 }
 
 /// Upgrade an HTTP request to a WebSocket bound to `room_id`.
-///
-/// The handler is split in two phases :
-///
-/// 1. *Sync* : optional JWT verification (returns `401` on failure).
-/// 2. *Async* : the actual `on_upgrade` task that joins the room and
-///    fans messages out.
 pub async fn ws_room(
     State(app): State<AppState>,
     ws: WebSocketUpgrade,
@@ -71,12 +62,27 @@ pub async fn ws_room(
         .into_response()
 }
 
-/// Per-connection task : join the room, then loop on
-/// `socket.recv()` / `inbox.recv()`, broadcasting inbound frames to
-/// every other peer in the same room.
+/// Per-connection task : join the room, replay the latest persisted
+/// snapshot if any, then loop on `socket.recv()` / `inbox.recv()`.
 async fn handle_socket(app: AppState, mut socket: WebSocket, room_id: String) {
     let (conn_id, mut inbox) = app.rooms.join(&room_id).await;
     info!(%room_id, connection_id = conn_id.0, "websocket connected");
+
+    // v018 : replay the most recent snapshot to the joining peer so it
+    // doesn't see an empty canvas.
+    if let Some(bytes) = app.rooms.snapshot(&room_id).await {
+        let msg = ServerMessage::Snapshot(OpPayload { seq: 0, bytes });
+        match rmp_serde::to_vec_named(&msg) {
+            Ok(encoded) => {
+                if let Err(err) = socket.send(Message::Binary(encoded)).await {
+                    warn!(%room_id, error = %err, "failed to send replay snapshot");
+                } else {
+                    debug!(%room_id, "replay snapshot sent to joining peer");
+                }
+            }
+            Err(err) => warn!(%room_id, error = %err, "encode replay snapshot failed"),
+        }
+    }
 
     loop {
         tokio::select! {
