@@ -8,6 +8,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
+### 📚 Documentation
+- **Design system Miro adopté** via `npx getdesign@latest add miro`
+  - Nouveau fichier `DESIGN.md` à la racine (724 lignes) — source de vérité des tokens visuels
+  - Nouveau fichier `docs/08-UX-UI/05-design-system.md` — documentation du choix
+  - `docs/08-UX-UI/01-principes-design.md` mis à jour : délègue les tokens à DESIGN.md
+  - `docs/README.md` et `README.md` mis à jour pour référencer DESIGN.md
+
 À venir dans `v002` :
 - Cargo workspace structuré
 - Hello world fenêtre wgpu + winit + egui

@@ -54,6 +54,18 @@ La documentation complète se trouve dans [`/docs`](./docs/) — **70 fichiers r
 
 **Démarrer ici** : [docs/README.md](./docs/README.md) pour la navigation, ou directement [00-VUE-ENSEMBLE/01-introduction.md](./docs/00-VUE-ENSEMBLE/01-introduction.md).
 
+## 🎨 Design system
+
+BSE utilise le design system **Miro** comme référence visuelle, généré via [`getdesign`](https://www.getdesign.app/) :
+
+```bash
+npx getdesign@latest add miro
+```
+
+Le fichier [`DESIGN.md`](./DESIGN.md) à la racine contient tous les tokens (couleurs, typographie, espacements, composants). C'est la **source de vérité** pour toute UI à écrire.
+
+> 📌 Documentation du choix : [docs/08-UX-UI/05-design-system.md](./docs/08-UX-UI/05-design-system.md).
+
 ## 🛠️ Stack technique (résumé)
 
 | Couche | Choix |

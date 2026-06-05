@@ -110,7 +110,7 @@ Détail de chaque feature.
 | [08-export-import.md](./07-FEATURES/08-export-import.md) | PNG, PDF, SVG, JSON |
 
 ### [08 — UX / UI](./08-UX-UI/)
-Principes d'interface.
+Principes d'interface et design system.
 
 | Fichier | Sujet |
 |---|---|
@@ -118,6 +118,9 @@ Principes d'interface.
 | [02-toolbar-outils.md](./08-UX-UI/02-toolbar-outils.md) | Barre d'outils, palette |
 | [03-multi-curseurs-presence.md](./08-UX-UI/03-multi-curseurs-presence.md) | Indicateurs de présence |
 | [04-raccourcis-clavier.md](./08-UX-UI/04-raccourcis-clavier.md) | Liste des raccourcis |
+| [05-design-system.md](./08-UX-UI/05-design-system.md) | Design system Miro (via getdesign) |
+
+> 📌 **Tokens visuels (couleurs, typographie, composants)** : voir [`/DESIGN.md`](../DESIGN.md) à la racine du repo.
 
 ### [09 — Sécurité](./09-SECURITE/)
 Authentification, permissions, chiffrement.

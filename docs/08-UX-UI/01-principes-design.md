@@ -79,42 +79,24 @@ Tab pour switch.
 - Timer (si actif)
 - Mini-map (toggleable)
 
-## Couleurs
+## Couleurs et typographie : voir DESIGN.md
 
-### Mode clair (par défaut)
-```
-Background canvas : #FAFAFA
-Background UI    : #FFFFFF
-Border           : #E5E5E5
-Text             : #1A1A1A
-Text muted       : #6B7280
-Accent           : #2563EB (bleu BSE)
-Success          : #10B981
-Warning          : #F59E0B
-Danger           : #EF4444
-```
+> 📌 **Les tokens visuels précis (couleurs, typographie, espacements) sont définis dans le fichier [`/DESIGN.md`](../../DESIGN.md) à la racine du repo.**
+>
+> Ce fichier est généré via `npx getdesign@latest add miro` et constitue la **source de vérité** du design system BSE (inspiré de Miro).
+>
+> Détails du choix et adaptation pour BSE : [05-design-system.md](./05-design-system.md).
 
-### Mode sombre
-```
-Background canvas : #1A1A1A
-Background UI    : #232323
-Border           : #353535
-Text             : #FAFAFA
-Text muted       : #9CA3AF
-Accent           : #3B82F6
-```
+### Principes de couleur
+- Palette inspirée de **Miro** : brand yellow `#ffd02f`, accents pastel (rose, teal, coral, orange, mint) — exactement les couleurs naturelles des post-its
+- **Mode sombre** : variantes inverses, supporté dès v0.5
+- **WCAG AA** minimum sur tous les contrastes texte/fond
+- **Couleurs peers** : palette de 8 distinctes pour la collaboration (cf [../05-COLLABORATION-TEMPS-REEL/04-presence-cursors.md](../05-COLLABORATION-TEMPS-REEL/04-presence-cursors.md))
 
-### Couleurs peers
-Palette de 8 distinctes WCAG AA (cf [../05-COLLABORATION-TEMPS-REEL/04-presence-cursors.md](../05-COLLABORATION-TEMPS-REEL/04-presence-cursors.md)).
-
-## Typographie
-
-- **Police UI** : Inter (bundled)
-- **Tailles** :
-  - Body : 13 px (UI compact)
-  - Headers : 16-20 px
-  - Tooltips : 12 px
-- **Hierarchy** : graisse plus que taille pour la hiérarchie
+### Principes typographiques
+- **Famille principale** : **Inter** (open-source, en remplacement de Roobert PRO commerciale de Miro)
+- **Hiérarchie par graisse** plus que par taille pour le compact
+- **UI compact par défaut** (densité « pro »), modes confort et spacious disponibles
 
 ## Espacements
 
@@ -183,6 +165,7 @@ L'UI peut être à 3 densités :
 
 ## Liens
 
+- **Design system (tokens)** → [05-design-system.md](./05-design-system.md) + [`/DESIGN.md`](../../DESIGN.md)
 - Toolbar → [02-toolbar-outils.md](./02-toolbar-outils.md)
 - Multi-curseurs → [03-multi-curseurs-presence.md](./03-multi-curseurs-presence.md)
 - Raccourcis → [04-raccourcis-clavier.md](./04-raccourcis-clavier.md)
