@@ -18,4 +18,4 @@ pub mod style;
 pub use camera::Camera;
 pub use element::{Element, ElementKind};
 pub use scene::Scene;
-pub use style::{PenStyle, ShapeStyle, Style, TextStyle};
+pub use style::{ImageStyle, PenStyle, ShapeStyle, Style, TextStyle};

@@ -75,6 +75,19 @@ impl Default for TextStyle {
     }
 }
 
+/// Style applied to a raster image.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ImageStyle {
+    /// Opacity in `0.0..=1.0`.
+    pub opacity: f32,
+}
+
+impl Default for ImageStyle {
+    fn default() -> Self {
+        Self { opacity: 1.0 }
+    }
+}
+
 /// Tagged union of styles, used when an element's style varies by kind.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -85,6 +98,8 @@ pub enum Style {
     Pen(PenStyle),
     /// Style for text blocks.
     Text(TextStyle),
+    /// Style for raster images.
+    Image(ImageStyle),
 }
 
 impl Style {
@@ -104,5 +119,11 @@ impl Style {
     #[must_use]
     pub fn text() -> Self {
         Self::Text(TextStyle::default())
+    }
+
+    /// Default image style.
+    #[must_use]
+    pub fn image() -> Self {
+        Self::Image(ImageStyle::default())
     }
 }

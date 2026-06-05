@@ -6,6 +6,7 @@ use bse_spatial::Quadtree;
 use bse_types::{ElementId, Vec2 as WorldVec2};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
+use crate::assets::AssetStore;
 use crate::canvas::{draw, grid, input};
 
 /// Render the central canvas region. Returns the number of elements
@@ -15,6 +16,7 @@ pub fn show(
     canvas: &mut CanvasState,
     scene: &mut Scene,
     spatial: &Quadtree<ElementId>,
+    assets: &mut AssetStore,
 ) -> u32 {
     let available = ui.available_size_before_wrap();
     let (response, painter) = ui.allocate_painter(available, Sense::click_and_drag());
@@ -26,7 +28,16 @@ pub fn show(
     paint_background(&painter, rect);
     grid::paint(&painter, rect, &canvas.camera, viewport);
     paint_origin_marker(&painter, rect, canvas, viewport);
-    let visible = draw::elements(&painter, rect, &canvas.camera, viewport, scene, spatial);
+    let visible = draw::elements(
+        &painter,
+        rect,
+        &canvas.camera,
+        viewport,
+        scene,
+        spatial,
+        assets,
+        ui.ctx(),
+    );
     draw::tool_preview(&painter, rect, &canvas.camera, viewport, canvas);
 
     visible

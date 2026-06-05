@@ -1,23 +1,24 @@
 //! Render scene elements and the in-progress tool preview via the
 //! `egui::Painter`. v005 introduced shape rendering ; v006 adds pen
-//! stroke rendering using `bse-pen`.
+//! stroke rendering ; v013 adds text ; v014 adds raster images.
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
 use bse_model::{
-    Camera, Element, ElementKind, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style, TextStyle,
-    element::StrokePoint,
+    Camera, Element, ElementKind, ImageStyle, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style,
+    TextStyle, element::StrokePoint,
 };
 use bse_pen::{InputPoint, StrokeOptions, get_stroke};
 use bse_spatial::Quadtree;
-use bse_types::{Color, ElementId, PeerId, Rect as WorldRect, Transform, Vec2 as WorldVec2};
+use bse_types::{
+    AssetId, Color, ElementId, PeerId, Rect as WorldRect, Transform, Vec2 as WorldVec2,
+};
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Stroke};
+
+use crate::assets::AssetStore;
 
 /// Render every element of `scene` that intersects the camera viewport,
 /// in z-order. Returns the count of elements actually drawn.
-///
-/// `spatial` is used for viewport culling : without it, large scenes
-/// (~10 000 elements) would force every element through the renderer
-/// every frame.
+#[allow(clippy::too_many_arguments)]
 pub fn elements(
     painter: &egui::Painter,
     rect: Rect,
@@ -25,6 +26,8 @@ pub fn elements(
     viewport: WorldVec2,
     scene: &Scene,
     spatial: &Quadtree<ElementId>,
+    assets: &mut AssetStore,
+    ctx: &egui::Context,
 ) -> u32 {
     let world_viewport = camera.viewport_world_rect(viewport);
     let visible_ids = spatial.query(world_viewport);
@@ -34,7 +37,7 @@ pub fn elements(
         .collect();
     visible.sort_by(|a, b| a.z.cmp(&b.z).then(a.id.as_uuid().cmp(&b.id.as_uuid())));
     for element in &visible {
-        paint_element(painter, rect, camera, viewport, element);
+        paint_element(painter, rect, camera, viewport, element, assets, ctx);
     }
     u32::try_from(visible.len()).unwrap_or(u32::MAX)
 }
@@ -54,7 +57,7 @@ pub fn tool_preview(
             current_world,
         } => {
             if let Some(element) = preview_shape(canvas.tool, *anchor_world, *current_world) {
-                paint_element(painter, rect, camera, viewport, &element);
+                paint_shape_only(painter, rect, camera, viewport, &element);
             }
         }
         ToolState::DrawingStroke { points } => {
@@ -88,6 +91,41 @@ pub fn commit_text(position: WorldVec2) -> Element {
             font_size: 16.0,
         },
         style: Style::Text(TextStyle::default()),
+        transform: Transform::from_translation(position),
+        z: 0,
+        created_by: PeerId::default(),
+        created_at: 0,
+    }
+}
+
+/// Build an `Image` element at the given position, sized so it fits a
+/// sensible default world-space rectangle (max 400 unit wide / tall,
+/// preserving aspect ratio).
+#[must_use]
+pub fn commit_image(position: WorldVec2, asset_id: AssetId, px_w: u32, px_h: u32) -> Element {
+    const MAX: f32 = 400.0;
+    // Cast note : decoded image dimensions fit in `f32` mantissa for any
+    // realistic file (< ~16M × 16M).
+    #[allow(clippy::cast_precision_loss)]
+    let original_w = px_w as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let original_h = px_h as f32;
+    let aspect = original_w / original_h.max(1.0);
+    let (w, h) = if original_w <= MAX && original_h <= MAX {
+        (original_w, original_h)
+    } else if aspect >= 1.0 {
+        (MAX, MAX / aspect)
+    } else {
+        (MAX * aspect, MAX)
+    };
+    Element {
+        id: ElementId::new_v7(),
+        kind: ElementKind::Image {
+            asset_id,
+            width: w,
+            height: h,
+        },
+        style: Style::Image(ImageStyle::default()),
         transform: Transform::from_translation(position),
         z: 0,
         created_by: PeerId::default(),
@@ -177,12 +215,15 @@ fn preview_pen_color() -> Color {
     Color::rgba(0x42, 0x62, 0xFF, 0xA0)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_element(
     painter: &egui::Painter,
     rect: Rect,
     camera: &Camera,
     viewport: WorldVec2,
     element: &Element,
+    assets: &mut AssetStore,
+    ctx: &egui::Context,
 ) {
     let translation = element.transform.translation;
     match (&element.kind, &element.style) {
@@ -231,6 +272,70 @@ fn paint_element(
                 *font_size,
                 s,
             );
+        }
+        (
+            ElementKind::Image {
+                asset_id,
+                width,
+                height,
+            },
+            Style::Image(s),
+        ) => {
+            paint_image(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                *width,
+                *height,
+                *asset_id,
+                s,
+                assets,
+                ctx,
+            );
+        }
+        _ => {}
+    }
+}
+
+/// Paint a non-image element. Used by `tool_preview` which has no
+/// `AssetStore` access (previews are never images).
+fn paint_shape_only(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: &Camera,
+    viewport: WorldVec2,
+    element: &Element,
+) {
+    let translation = element.transform.translation;
+    match (&element.kind, &element.style) {
+        (ElementKind::Rectangle { width, height }, Style::Shape(s)) => {
+            paint_rectangle(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                *width,
+                *height,
+                s,
+            );
+        }
+        (ElementKind::Ellipse { width, height }, Style::Shape(s)) => {
+            paint_ellipse(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                *width,
+                *height,
+                s,
+            );
+        }
+        (ElementKind::Line { end }, Style::Shape(s)) => {
+            paint_line(painter, rect, camera, viewport, translation, *end, s);
         }
         _ => {}
     }
@@ -315,6 +420,46 @@ fn paint_line(
             to_color32(stroke_color, style.opacity),
         ),
     );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_image(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: &Camera,
+    viewport: WorldVec2,
+    center: WorldVec2,
+    width: f32,
+    height: f32,
+    asset_id: AssetId,
+    style: &ImageStyle,
+    assets: &mut AssetStore,
+    ctx: &egui::Context,
+) {
+    let Some(texture) = assets.texture(asset_id, ctx) else {
+        // Asset missing — render a placeholder so the user sees that
+        // *something* should be there.
+        let half = WorldVec2::new(width, height) / 2.0;
+        let min = world_to_screen(camera, viewport, rect, center - half);
+        let max = world_to_screen(camera, viewport, rect, center + half);
+        painter.rect_filled(
+            Rect::from_min_max(min, max),
+            Rounding::same(2.0),
+            Color32::from_rgba_unmultiplied(0xC7, 0xCA, 0xD5, 0x80),
+        );
+        return;
+    };
+    let half = WorldVec2::new(width, height) / 2.0;
+    let min = world_to_screen(camera, viewport, rect, center - half);
+    let max = world_to_screen(camera, viewport, rect, center + half);
+    let screen_rect = Rect::from_min_max(min, max);
+    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    // Cast note : the clamp keeps the value in [0, 255], so the truncation
+    // is exact.
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let alpha = (style.opacity * 255.0).clamp(0.0, 255.0) as u8;
+    let tint = Color32::from_rgba_unmultiplied(0xFF, 0xFF, 0xFF, alpha);
+    painter.image(texture.id(), screen_rect, uv, tint);
 }
 
 #[allow(clippy::too_many_arguments)]

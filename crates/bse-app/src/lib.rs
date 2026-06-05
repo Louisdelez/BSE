@@ -8,8 +8,11 @@
 #![warn(rust_2018_idioms)]
 
 mod app;
+mod assets;
 mod canvas;
 mod tracing_setup;
+
+pub use assets::{Asset, AssetError, AssetStore};
 
 use bse_ui::AppInfo;
 use eframe::{NativeOptions, egui};
@@ -21,7 +24,7 @@ use crate::app::BseApp;
 pub const APP_INFO: AppInfo = AppInfo {
     name: "BSE",
     version: env!("CARGO_PKG_VERSION"),
-    milestone: "v004",
+    milestone: "v014",
 };
 
 /// Start the event loop and run BSE until the user closes the window.

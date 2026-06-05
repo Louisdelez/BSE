@@ -81,6 +81,15 @@ pub enum ElementKind {
         /// Font size in world units. Default `16.0`.
         font_size: f32,
     },
+    /// Raster image. Bytes live in the app's [`AssetStore`] (not in the CRDT).
+    Image {
+        /// Identifier of the asset blob in the asset store.
+        asset_id: bse_types::AssetId,
+        /// Width in world units.
+        width: f32,
+        /// Height in world units.
+        height: f32,
+    },
 }
 
 impl ElementKind {
@@ -88,7 +97,9 @@ impl ElementKind {
     #[must_use]
     pub fn local_bbox(&self) -> Rect {
         match self {
-            Self::Rectangle { width, height } | Self::Ellipse { width, height } => {
+            Self::Rectangle { width, height }
+            | Self::Ellipse { width, height }
+            | Self::Image { width, height, .. } => {
                 Rect::from_center_size(Vec2::ZERO, Vec2::new(*width, *height))
             }
             Self::Line { end } => Rect::from_two_points(Vec2::ZERO, *end),

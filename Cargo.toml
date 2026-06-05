@@ -15,6 +15,10 @@ members = [
     "crates/bse-app",
     "crates/bse-server",
 ]
+exclude = [
+    "crates/bse-auth",      # added in v016
+    "crates/bse-projects",  # added in v015
+]
 
 [workspace.package]
 version = "0.0.2"
