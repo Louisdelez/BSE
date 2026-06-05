@@ -93,6 +93,20 @@ impl RoomPicker {
         *self = Self::default();
     }
 
+    /// `true` when the latest error from any background request looks
+    /// like an "the token the server received cannot be verified"
+    /// case — i.e. the local session is no longer valid (server
+    /// restarted with a new secret, refresh token was revoked, etc.).
+    /// The host app reacts by signing the user out.
+    pub fn auth_invalid(&self) -> bool {
+        let e = self.error.to_ascii_lowercase();
+        e.contains("invalid_token")
+            || e.contains("invalidsignature")
+            || e.contains("invalid token")
+            || e.contains("missing token")
+            || e.contains("wrong token type")
+    }
+
     /// Drain background results and integrate them.
     fn poll(&mut self) {
         if let Some(rx) = self.fetch_rx.as_ref() {

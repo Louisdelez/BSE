@@ -596,6 +596,21 @@ impl BseApp {
         {
             self.switch_room(room);
         }
+
+        // If the picker surfaced an "invalid token" error (server
+        // restarted with a new BSE_JWT_SECRET, refresh token revoked,
+        // …), bounce the user back to the login modal instead of
+        // leaving them stuck.
+        if self.room_picker.auth_invalid() {
+            warn!(
+                target: "bse::auth",
+                "stored session rejected by server ; signing out",
+            );
+            self.toasts
+                .warning("Session expired — please sign in again.")
+                .duration(Some(Duration::from_secs(4)));
+            self.sign_out();
+        }
     }
 
     /// Render the small account widget on the right side of the toolbar
