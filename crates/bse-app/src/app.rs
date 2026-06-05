@@ -18,8 +18,9 @@ use bse_sync::{ClientConfig, ConnectionState};
 use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
 use bse_canvas::ToolKind;
 use bse_ui::{
-    Command, CommandPaletteState, ConnectionStatus, StatusInfo, ThemeMode, apply_bse_theme,
-    command_palette, status_bar, toolbar,
+    Command, CommandPaletteState, ConnectionStatus, DEFAULT_PALETTE, DEFAULT_SIZES,
+    PenOptionsSelection, StatusInfo, ThemeMode, apply_bse_theme, command_palette, pen_options,
+    status_bar, toolbar,
 };
 use eframe::egui;
 use tracing::{info, warn};
@@ -532,6 +533,32 @@ impl BseApp {
         self.last_connection_state = self.connection_state;
     }
 
+    /// Render the floating pen-options pill above the tool bar.
+    fn render_pen_options(&mut self, ui: &mut egui::Ui) {
+        let parent_rect = ui.max_rect();
+        // The tool bar paints 24 px above the bottom of `parent_rect`
+        // and is ~56 px tall. The pen options anchor sits at the
+        // top-center of that bar.
+        let toolbar_top_y = parent_rect.max.y - 24.0 - 56.0;
+        let anchor = egui::Pos2::new(parent_rect.center().x, toolbar_top_y);
+
+        let mut selection = PenOptionsSelection {
+            color: bse_ui::ColorSwatch::new(
+                self.canvas.pen_style.color.r,
+                self.canvas.pen_style.color.g,
+                self.canvas.pen_style.color.b,
+            ),
+            size: self.canvas.pen_style.size,
+        };
+        pen_options(ui, anchor, &mut selection, DEFAULT_PALETTE, DEFAULT_SIZES);
+        self.canvas.pen_style.color = bse_types::Color::rgb(
+            selection.color.r,
+            selection.color.g,
+            selection.color.b,
+        );
+        self.canvas.pen_style.size = selection.size;
+    }
+
     /// Make sure a sync worker exists and is connected to `self.current_room`.
     /// Called every frame once the user is signed in and a room is picked.
     fn ensure_sync_connected(&mut self) {
@@ -812,6 +839,10 @@ impl eframe::App for BseApp {
             );
             // Floating tool picker centered-bottom on top of the canvas.
             toolbar(ui, &mut self.canvas);
+            // Pen options panel (color + size) when Pen is active.
+            if matches!(self.canvas.tool, bse_canvas::ToolKind::Pen) {
+                self.render_pen_options(ui);
+            }
             canvas_rect = ui.min_rect();
         });
 

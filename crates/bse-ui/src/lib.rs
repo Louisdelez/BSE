@@ -9,6 +9,7 @@
 
 pub mod components;
 mod info;
+pub mod pen_options;
 mod status_bar;
 pub mod theme;
 mod toolbar;
@@ -18,6 +19,9 @@ pub use components::{
     PillVariant, StatusPill, avatar, avatar_stack, card_button, command_palette, show_modal,
 };
 pub use info::AppInfo;
+pub use pen_options::{
+    ColorSwatch, DEFAULT_PALETTE, DEFAULT_SIZES, PenOptionsSelection, pen_options,
+};
 pub use status_bar::{ConnectionStatus, StatusInfo, status_bar};
 pub use theme::{ThemeMode, apply_bse_theme};
 pub use toolbar::toolbar;

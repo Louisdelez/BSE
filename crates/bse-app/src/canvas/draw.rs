@@ -62,7 +62,15 @@ pub fn tool_preview(
             }
         }
         ToolState::DrawingStroke { points } => {
-            paint_stroke_outline(painter, rect, camera, viewport, points, preview_pen_color());
+            paint_stroke_outline(
+                painter,
+                rect,
+                camera,
+                viewport,
+                points,
+                canvas.pen_style.color,
+                canvas.pen_style.size,
+            );
         }
     }
 }
@@ -175,7 +183,7 @@ pub fn commit_image(position: WorldVec2, asset_id: AssetId, px_w: u32, px_h: u32
 /// Build a final pen `Element` from accumulated stroke samples. Returns
 /// `None` if the input is empty.
 #[must_use]
-pub fn commit_stroke(points: &[InputPoint]) -> Option<Element> {
+pub fn commit_stroke(points: &[InputPoint], style: ModelPenStyle) -> Option<Element> {
     if points.is_empty() {
         return None;
     }
@@ -191,7 +199,7 @@ pub fn commit_stroke(points: &[InputPoint]) -> Option<Element> {
                 })
                 .collect(),
         },
-        style: Style::Pen(ModelPenStyle::default()),
+        style: Style::Pen(style),
         transform: Transform::IDENTITY,
         z: 0,
         created_by: PeerId::default(),
@@ -250,10 +258,6 @@ fn preview_shape_style() -> ShapeStyle {
     }
 }
 
-fn preview_pen_color() -> Color {
-    Color::rgba(0x42, 0x62, 0xFF, 0xA0)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn paint_element(
     painter: &egui::Painter,
@@ -298,7 +302,7 @@ fn paint_element(
                 .iter()
                 .map(|p| InputPoint::new(p.x, p.y, p.pressure))
                 .collect();
-            paint_stroke_outline(painter, rect, camera, viewport, &inputs, s.color);
+            paint_stroke_outline(painter, rect, camera, viewport, &inputs, s.color, s.size);
         }
         (ElementKind::Text { content, font_size }, Style::Text(s)) => {
             paint_text(
@@ -523,6 +527,7 @@ fn paint_text(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_stroke_outline(
     painter: &egui::Painter,
     rect: Rect,
@@ -530,11 +535,16 @@ fn paint_stroke_outline(
     viewport: WorldVec2,
     points: &[InputPoint],
     color: Color,
+    size: f32,
 ) {
     if points.len() < 2 {
         return;
     }
-    let outline = get_stroke(points, &StrokeOptions::default());
+    let options = StrokeOptions {
+        size,
+        ..StrokeOptions::default()
+    };
+    let outline = get_stroke(points, &options);
     if outline.len() < 3 {
         return;
     }

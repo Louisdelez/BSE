@@ -168,8 +168,9 @@ fn handle_pen_drag(
             points.push(InputPoint::new(world.x, world.y, DEFAULT_PRESSURE));
         }
     } else if response.drag_stopped_by(PointerButton::Primary)
-        && let ToolState::DrawingStroke { points } = std::mem::take(&mut canvas.tool_state)
-        && let Some(element) = draw::commit_stroke(&points)
+        && let ToolState::DrawingStroke { points } =
+            std::mem::replace(&mut canvas.tool_state, ToolState::Idle)
+        && let Some(element) = draw::commit_stroke(&points, canvas.pen_style.clone())
         && let Err(err) = crdt.upsert_element(element)
     {
         warn!(target: "bse::canvas", error = %err, "stroke upsert failed");

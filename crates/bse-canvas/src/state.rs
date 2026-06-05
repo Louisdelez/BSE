@@ -1,6 +1,6 @@
 //! Mutable state owned by the canvas.
 
-use bse_model::Camera;
+use bse_model::{Camera, PenStyle};
 use bse_pen::InputPoint;
 use bse_types::Vec2;
 
@@ -15,6 +15,9 @@ pub struct CanvasState {
     pub tool: ToolKind,
     /// Transient state for a tool that has a multi-frame interaction.
     pub tool_state: ToolState,
+    /// Color + size + tapers used by the next pen stroke. Persisted in
+    /// `CanvasState` (not in the CRDT) so it's a per-peer preference.
+    pub pen_style: PenStyle,
 }
 
 impl CanvasState {
