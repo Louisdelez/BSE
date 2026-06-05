@@ -5,12 +5,14 @@
 
 mod avatar;
 mod card;
+pub mod command_palette;
 mod modal;
 mod pill_button;
 mod status_pill;
 
 pub use avatar::{avatar, avatar_stack};
 pub use card::{Card, CardVariant, card_button};
+pub use command_palette::{Command, CommandPaletteState};
 pub use modal::{Modal, ModalResponse, show_modal};
 pub use pill_button::{PillButton, PillVariant};
 pub use status_pill::{PillTone, StatusPill};

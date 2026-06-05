@@ -16,7 +16,11 @@ use bse_spatial::Quadtree;
 use bse_storage::{LocalStorage, SqliteStorage};
 use bse_sync::{ClientConfig, ConnectionState};
 use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
-use bse_ui::{ConnectionStatus, StatusInfo, ThemeMode, apply_bse_theme, status_bar, toolbar};
+use bse_canvas::ToolKind;
+use bse_ui::{
+    Command, CommandPaletteState, ConnectionStatus, StatusInfo, ThemeMode, apply_bse_theme,
+    command_palette, status_bar, toolbar,
+};
 use eframe::egui;
 use tracing::{info, warn};
 
@@ -96,6 +100,8 @@ pub struct BseApp {
     /// Previous connection state — used to detect transitions and
     /// fire the matching toast exactly once.
     last_connection_state: ConnectionState,
+    /// Command palette (Cmd+K) state.
+    cmd_palette: CommandPaletteState,
 }
 
 impl Default for BseApp {
@@ -181,6 +187,7 @@ impl BseApp {
             theme_applied: false,
             toasts: Toasts::default(),
             last_connection_state: ConnectionState::Offline,
+            cmd_palette: CommandPaletteState::default(),
         }
     }
 
@@ -439,6 +446,62 @@ impl BseApp {
             self.current_room = None;
         }
         info!(target: "bse::auth", "signed out");
+    }
+
+    /// Build the list of commands currently available based on the
+    /// app's state, and run the command palette modal if open.
+    fn run_command_palette(&mut self, ctx: &egui::Context) {
+        // Open with Cmd/Ctrl + K.
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::K)) {
+            if self.cmd_palette.open {
+                self.cmd_palette.close();
+            } else {
+                self.cmd_palette.open();
+            }
+        }
+        if !self.cmd_palette.open {
+            return;
+        }
+
+        let commands: Vec<Command> = vec![
+            Command::new("tool-select", "Select tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::CURSOR),
+            Command::new("tool-pen", "Pen tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::PENCIL_SIMPLE),
+            Command::new("tool-rectangle", "Rectangle tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::SQUARE),
+            Command::new("tool-ellipse", "Ellipse tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::CIRCLE),
+            Command::new("tool-line", "Line tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::LINE_SEGMENT),
+            Command::new("tool-text", "Text tool")
+                .with_category("Tool")
+                .with_icon(egui_phosphor::regular::TEXT_T),
+            Command::new("room-switch", "Switch room…")
+                .with_category("Room")
+                .with_icon(egui_phosphor::regular::HOUSE),
+            Command::new("account-sign-out", "Sign out")
+                .with_category("Account"),
+        ];
+
+        if let Some(id) = command_palette::show(ctx, &mut self.cmd_palette, &commands) {
+            match id {
+                "tool-select" => self.canvas.set_tool(ToolKind::Select),
+                "tool-pen" => self.canvas.set_tool(ToolKind::Pen),
+                "tool-rectangle" => self.canvas.set_tool(ToolKind::Rectangle),
+                "tool-ellipse" => self.canvas.set_tool(ToolKind::Ellipse),
+                "tool-line" => self.canvas.set_tool(ToolKind::Line),
+                "tool-text" => self.canvas.set_tool(ToolKind::Text),
+                "room-switch" => self.show_picker = true,
+                "account-sign-out" => self.sign_out(),
+                _ => {}
+            }
+        }
     }
 
     /// Detect transitions in `connection_state` and fire matching
@@ -739,7 +802,8 @@ impl eframe::App for BseApp {
 
         self.emit_local_cursor(ctx, canvas_rect);
 
-        // Render queued toasts above everything else.
+        // Cmd/Ctrl+K palette + queued toasts above everything else.
+        self.run_command_palette(ctx);
         self.toasts.show(ctx);
 
         let current = self.crdt.element_count();

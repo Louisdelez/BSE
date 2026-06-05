@@ -410,6 +410,7 @@ dependencies = [
  "directories",
  "eframe",
  "egui-notify",
+ "egui-phosphor",
  "image",
  "reqwest",
  "rfd",

@@ -14,8 +14,8 @@ pub mod theme;
 mod toolbar;
 
 pub use components::{
-    Card, CardVariant, Modal, ModalResponse, PillButton, PillTone, PillVariant, StatusPill,
-    avatar, avatar_stack, card_button, show_modal,
+    Card, CardVariant, Command, CommandPaletteState, Modal, ModalResponse, PillButton, PillTone,
+    PillVariant, StatusPill, avatar, avatar_stack, card_button, command_palette, show_modal,
 };
 pub use info::AppInfo;
 pub use status_bar::{ConnectionStatus, StatusInfo, status_bar};
