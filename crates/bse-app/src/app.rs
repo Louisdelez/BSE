@@ -5,6 +5,7 @@
 //! sync worker thread. Coordinates the layout between toolbar, canvas,
 //! and status bar.
 
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use bse_auth::SessionState;
@@ -39,6 +40,9 @@ const IMAGE_PIXEL_WARN: u32 = 4096;
 /// Default room name used when `BSE_ROOM` is not set.
 const DEFAULT_ROOM: &str = "lobby";
 
+/// Refresh the access token when it has less than this many seconds left.
+const REFRESH_LEAD_SECS: u64 = 60;
+
 /// Root application state.
 pub struct BseApp {
     canvas: CanvasState,
@@ -70,6 +74,9 @@ pub struct BseApp {
     /// Cached HTTP base of the server (`ws://` → `http://`). Empty when
     /// no `BSE_SERVER_URL` is configured.
     server_http_base: String,
+    /// `Some` while a background token-refresh request is in flight.
+    /// Drains a fresh [`SessionState`] (or an error message) on completion.
+    refresh_rx: Option<mpsc::Receiver<Result<SessionState, String>>>,
 }
 
 impl Default for BseApp {
@@ -145,6 +152,7 @@ impl BseApp {
             session,
             login_form: LoginForm::default(),
             server_http_base,
+            refresh_rx: None,
         }
     }
 
@@ -303,6 +311,101 @@ impl BseApp {
         }
     }
 
+    /// Kick off a background HTTP refresh if the access token is about
+    /// to expire and no refresh is already in flight. Non-blocking : the
+    /// new session lands on a `mpsc::Receiver` that is drained on the
+    /// next frame via [`Self::poll_refresh`].
+    fn maybe_refresh_token(&mut self) {
+        if self.refresh_rx.is_some() || self.server_http_base.is_empty() {
+            return;
+        }
+        let SessionState::SignedIn {
+            access_expires_at,
+            refresh_token,
+            ..
+        } = &self.session
+        else {
+            return;
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if now + REFRESH_LEAD_SECS < *access_expires_at {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let base = self.server_http_base.clone();
+        let token = refresh_token.clone();
+        std::thread::Builder::new()
+            .name("bse-auth-refresh".into())
+            .spawn(move || {
+                let _ = tx.send(login::try_refresh(&base, &token));
+            })
+            .ok();
+        self.refresh_rx = Some(rx);
+        info!(target: "bse::auth", "kicking off background token refresh");
+    }
+
+    /// Drain the refresh channel (if any) and apply the result.
+    fn poll_refresh(&mut self) {
+        let Some(rx) = self.refresh_rx.as_ref() else {
+            return;
+        };
+        let result = match rx.try_recv() {
+            Ok(res) => res,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.refresh_rx = None;
+                return;
+            }
+        };
+        self.refresh_rx = None;
+        match result {
+            Ok(new_session) => {
+                self.session = new_session;
+                if let Some(storage) = self.storage.as_mut() {
+                    login::persist_session(storage, &self.session);
+                }
+                info!(target: "bse::auth", "session refreshed");
+            }
+            Err(msg) => {
+                warn!(target: "bse::auth", error = %msg, "refresh failed ; signing out");
+                self.sign_out();
+            }
+        }
+    }
+
+    /// Clear the local session, persist the wipe, and disconnect from
+    /// the sync worker.
+    fn sign_out(&mut self) {
+        self.session = SessionState::SignedOut;
+        if let Some(storage) = self.storage.as_mut() {
+            login::clear_session(storage);
+        }
+        if let Some(sync) = self.sync.as_ref() {
+            sync.send(SyncCmd::Disconnect);
+        }
+        self.peers.clear();
+        info!(target: "bse::auth", "signed out");
+    }
+
+    /// Render the small account widget on the right side of the toolbar
+    /// (display name + sign-out button). No-op when signed out.
+    fn render_account_widget(&mut self, ui: &mut egui::Ui) {
+        let SessionState::SignedIn { display_name, .. } = &self.session else {
+            return;
+        };
+        let display_name = display_name.clone();
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.small_button("Sign out").clicked() {
+                self.sign_out();
+            }
+            ui.add_space(8.0);
+            ui.label(format!("Signed in as {display_name}"));
+        });
+    }
+
     /// Show the login modal if the user is signed out AND a server is
     /// configured. Without a server URL there is nobody to authenticate
     /// against, so we silently stay offline.
@@ -397,13 +500,18 @@ impl eframe::App for BseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
         self.process_sync_events();
+        self.poll_refresh();
+        self.maybe_refresh_token();
         self.maybe_show_login(ctx);
         self.handle_file_shortcuts(ctx);
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            toolbar(ui, &mut self.canvas);
+            ui.horizontal(|ui| {
+                toolbar(ui, &mut self.canvas);
+                self.render_account_widget(ui);
+            });
         });
 
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {

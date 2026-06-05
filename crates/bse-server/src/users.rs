@@ -114,4 +114,20 @@ impl UserStore {
             Ok(None)
         }
     }
+
+    /// Look up a user by email *without* checking the password.
+    ///
+    /// Used by the refresh-token endpoint, which has already proved
+    /// possession of a valid refresh JWT and just needs the current
+    /// account record (e.g. to honour a display-name change made
+    /// since the refresh token was minted).
+    pub fn verify_email_only(
+        &self,
+        email: &str,
+    ) -> Result<Option<UserRecord>, UserStoreError> {
+        let Some(row) = self.store.user_by_email(email)? else {
+            return Ok(None);
+        };
+        Ok(Some(row.into()))
+    }
 }

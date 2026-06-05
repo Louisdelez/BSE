@@ -1,7 +1,4 @@
-//! Authentication HTTP handlers : login and register.
-//!
-//! Returns JSON bodies with a stable shape that the desktop client
-//! consumes. Errors map to standard HTTP statuses.
+//! Authentication HTTP handlers : login, register, refresh.
 
 use axum::Json;
 use axum::extract::State;
@@ -33,7 +30,14 @@ pub struct RegisterRequest {
     pub display_name: String,
 }
 
-/// Response body for both login and register on success.
+/// Request body for `POST /api/auth/refresh`.
+#[derive(Debug, Deserialize)]
+pub struct RefreshRequest {
+    /// Previously-issued refresh token.
+    pub refresh_token: String,
+}
+
+/// Response body for login / register / refresh on success.
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
     /// Server-issued user id (UUID v7).
@@ -94,6 +98,20 @@ pub async fn register(State(app): State<AppState>, Json(req): Json<RegisterReque
             StatusCode::BAD_REQUEST,
         );
     }
+    if req.email.trim().is_empty() || !req.email.contains('@') {
+        return err(
+            "invalid_email",
+            "Please provide a valid email address.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    if req.display_name.trim().is_empty() {
+        return err(
+            "missing_display_name",
+            "Display name cannot be empty.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     match app
         .users
         .register(&req.email, &req.display_name, &req.password)
@@ -113,6 +131,66 @@ pub async fn register(State(app): State<AppState>, Json(req): Json<RegisterReque
             )
         }
     }
+}
+
+/// `POST /api/auth/refresh`.
+///
+/// Verifies the supplied refresh token, looks up the underlying user
+/// (so the response carries the current `display_name` rather than the
+/// one frozen in the token at issuance), and mints a fresh
+/// access/refresh pair.
+///
+/// This is the route the desktop client hits ~60 seconds before its
+/// current access token expires. Refresh tokens have a much longer
+/// TTL, so as long as the user is reasonably active the session stays
+/// alive indefinitely.
+pub async fn refresh(State(app): State<AppState>, Json(req): Json<RefreshRequest>) -> Response {
+    let claims = match app.jwt.verify(&req.refresh_token) {
+        Ok(c) if c.token_type == TokenType::Refresh => c,
+        Ok(_) => {
+            return err(
+                "wrong_token_type",
+                "Endpoint expects a refresh token.",
+                StatusCode::UNAUTHORIZED,
+            );
+        }
+        Err(e) => {
+            return err(
+                "invalid_refresh",
+                e.to_string(),
+                StatusCode::UNAUTHORIZED,
+            );
+        }
+    };
+
+    // Re-read the user record so a name change between issuance and
+    // refresh is honoured.
+    let email_in_token = claims.email.clone().unwrap_or_default();
+    let record = match app.users.verify_email_only(&email_in_token) {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return err(
+                "user_revoked",
+                "Account no longer exists.",
+                StatusCode::UNAUTHORIZED,
+            );
+        }
+        Err(e) => {
+            warn!(target: "bse::server::auth", error = %e, "refresh user lookup failed");
+            return err(
+                "internal_error",
+                "Refresh backend failed.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    issue_tokens(
+        &app,
+        &record.id.to_string(),
+        &record.email,
+        &record.display_name,
+    )
 }
 
 fn issue_tokens(app: &AppState, sub: &str, email: &str, display_name: &str) -> Response {

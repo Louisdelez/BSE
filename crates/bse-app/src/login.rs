@@ -1,10 +1,15 @@
-//! Login dialog : prompts for email / password and exchanges them
-//! against a JWT via `POST /api/auth/login`.
+//! Login / sign-up modal and session persistence (v016.1, extended v020).
 //!
-//! The dialog is shown as a floating modal `egui::Window` when the
-//! [`bse_auth::SessionState`] is signed-out. Once login succeeds, the
-//! session is persisted in `SqliteStorage` under [`SESSION_KEY`] so
-//! subsequent launches skip the prompt until the access token expires.
+//! Displays a floating `egui::Window` when the user is signed out. The
+//! form has two modes :
+//!
+//! - **Sign in** : email + password → `POST /api/auth/login`.
+//! - **Sign up** : email + display name + password → `POST /api/auth/register`.
+//!
+//! On success the resulting [`bse_auth::SessionState`] is persisted in
+//! `SqliteStorage` under [`SESSION_KEY`] so subsequent launches skip the
+//! prompt. The same module owns the auto-refresh helper used by
+//! [`crate::app::BseApp`] to renew access tokens before expiry.
 
 use bse_auth::SessionState;
 use bse_storage::{LocalStorage, SqliteStorage};
@@ -20,6 +25,18 @@ pub const SESSION_KEY: &str = "session";
 struct LoginPayload<'a> {
     email: &'a str,
     password: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct RegisterPayload<'a> {
+    email: &'a str,
+    password: &'a str,
+    display_name: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct RefreshPayload<'a> {
+    refresh_token: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,16 +55,30 @@ struct AuthError {
     message: String,
 }
 
+/// Which sub-form the modal currently shows.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginMode {
+    /// Existing-user sign-in.
+    #[default]
+    SignIn,
+    /// New-account registration.
+    SignUp,
+}
+
 /// In-memory state of the login form.
 pub struct LoginForm {
     /// Email field buffer.
     pub email: String,
     /// Password field buffer.
     pub password: String,
+    /// Display name field buffer (sign-up only).
+    pub display_name: String,
     /// Last error message to display to the user (empty when none).
     pub error: String,
     /// Whether a request is currently in flight.
     pub busy: bool,
+    /// Which sub-form is shown.
+    pub mode: LoginMode,
 }
 
 impl Default for LoginForm {
@@ -55,8 +86,10 @@ impl Default for LoginForm {
         Self {
             email: "demo@bse.app".to_string(),
             password: String::new(),
+            display_name: String::new(),
             error: String::new(),
             busy: false,
+            mode: LoginMode::default(),
         }
     }
 }
@@ -105,27 +138,39 @@ pub fn persist_session(storage: &mut SqliteStorage, session: &SessionState) {
     }
 }
 
-/// Render the login modal and, on Submit, run a blocking HTTP POST to
-/// `{server_url}/api/auth/login`. Returns `Some(SessionState)` on
-/// success, `None` while the user is still typing or after a failure.
-///
-/// `server_url` is the HTTP(S) base of the server (not the WebSocket
-/// URL). When the app has only a `ws://` URL, swap the scheme : e.g.
-/// `ws://localhost:8080` → `http://localhost:8080`.
+/// Clear any persisted session row. Called on sign-out.
+pub fn clear_session(storage: &mut SqliteStorage) {
+    // The `LocalStorage` trait does not expose a delete primitive yet ;
+    // overwriting with an empty blob makes the next `load_session`
+    // discard it as malformed and return `None`.
+    if let Err(err) = storage.save_snapshot(SESSION_KEY, &[]) {
+        warn!(target: "bse::auth", error = %err, "clear_session failed");
+    }
+}
+
+/// Render the login / sign-up modal. Returns `Some(SessionState)` on
+/// success, `None` otherwise.
 pub fn show_modal(
     ctx: &egui::Context,
     form: &mut LoginForm,
     server_url: &str,
 ) -> Option<SessionState> {
     let mut result = None;
-    egui::Window::new("Sign in to BSE")
+    let title = match form.mode {
+        LoginMode::SignIn => "Sign in to BSE",
+        LoginMode::SignUp => "Create your BSE account",
+    };
+    egui::Window::new(title)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, -20.0])
         .show(ctx, |ui| {
-            ui.set_min_width(320.0);
+            ui.set_min_width(340.0);
             ui.add_space(4.0);
-            ui.label("Connect to your BSE server.");
+            ui.label(match form.mode {
+                LoginMode::SignIn => "Connect to your BSE server.",
+                LoginMode::SignUp => "Choose your credentials and start collaborating.",
+            });
             ui.add_space(8.0);
 
             ui.label("Email");
@@ -133,6 +178,15 @@ pub fn show_modal(
                 !form.busy,
                 egui::TextEdit::singleline(&mut form.email).desired_width(f32::INFINITY),
             );
+
+            if matches!(form.mode, LoginMode::SignUp) {
+                ui.label("Display name");
+                ui.add_enabled(
+                    !form.busy,
+                    egui::TextEdit::singleline(&mut form.display_name)
+                        .desired_width(f32::INFINITY),
+                );
+            }
 
             ui.label("Password");
             ui.add_enabled(
@@ -149,24 +203,32 @@ pub fn show_modal(
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
+                let label = match form.mode {
+                    LoginMode::SignIn => "Sign in",
+                    LoginMode::SignUp => "Create account",
+                };
                 let submit = ui
-                    .add_enabled(!form.busy, egui::Button::new("Sign in"))
+                    .add_enabled(!form.busy, egui::Button::new(label))
                     .clicked()
                     || (!form.busy && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                 if submit {
-                    // The HTTP call below is blocking, so this branch
-                    // runs synchronously ; no need to flip `busy` (it
-                    // would just be reset at the bottom of the same
-                    // frame).
                     form.error.clear();
-                    match try_login(server_url, &form.email, &form.password) {
+                    let res = match form.mode {
+                        LoginMode::SignIn => try_login(server_url, &form.email, &form.password),
+                        LoginMode::SignUp => try_register(
+                            server_url,
+                            &form.email,
+                            &form.display_name,
+                            &form.password,
+                        ),
+                    };
+                    match res {
                         Ok(state) => {
                             form.password.clear();
+                            form.display_name.clear();
                             result = Some(state);
                         }
-                        Err(msg) => {
-                            form.error = msg;
-                        }
+                        Err(msg) => form.error = msg,
                     }
                 }
                 if form.busy {
@@ -174,43 +236,117 @@ pub fn show_modal(
                 }
             });
 
-            ui.add_space(4.0);
-            ui.small("Demo : demo@bse.app / demo1234");
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let toggle_label = match form.mode {
+                    LoginMode::SignIn => "Need an account ? Sign up",
+                    LoginMode::SignUp => "Have an account ? Sign in",
+                };
+                if ui.small_button(toggle_label).clicked() {
+                    form.mode = match form.mode {
+                        LoginMode::SignIn => LoginMode::SignUp,
+                        LoginMode::SignUp => LoginMode::SignIn,
+                    };
+                    form.error.clear();
+                }
+            });
+            if matches!(form.mode, LoginMode::SignIn) {
+                ui.small("Demo : demo@bse.app / demo1234");
+            } else {
+                ui.small("Password must be at least 8 characters.");
+            }
         });
     result
 }
 
 fn try_login(server_url: &str, email: &str, password: &str) -> Result<SessionState, String> {
     let url = format!("{}/api/auth/login", normalize_base(server_url));
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let resp = client
         .post(&url)
         .json(&LoginPayload { email, password })
         .send()
         .map_err(|e| format!("Connection failed : {e}"))?;
+    decode_auth_response(resp).map(|body| {
+        info!(target: "bse::auth", user = %body.display_name, "signed in");
+        body.into()
+    })
+}
+
+fn try_register(
+    server_url: &str,
+    email: &str,
+    display_name: &str,
+    password: &str,
+) -> Result<SessionState, String> {
+    let url = format!("{}/api/auth/register", normalize_base(server_url));
+    let client = http_client()?;
+    let resp = client
+        .post(&url)
+        .json(&RegisterPayload {
+            email,
+            password,
+            display_name,
+        })
+        .send()
+        .map_err(|e| format!("Connection failed : {e}"))?;
+    decode_auth_response(resp).map(|body| {
+        info!(target: "bse::auth", user = %body.display_name, "signed up");
+        body.into()
+    })
+}
+
+/// Refresh the access token, blocking until completion.
+///
+/// Used by the desktop app via a background thread (see
+/// `BseApp::maybe_refresh_token`). Returns the new session on success
+/// or an error message suitable for surfacing in the UI.
+pub fn try_refresh(server_url: &str, refresh_token: &str) -> Result<SessionState, String> {
+    let url = format!("{}/api/auth/refresh", normalize_base(server_url));
+    let client = http_client()?;
+    let resp = client
+        .post(&url)
+        .json(&RefreshPayload { refresh_token })
+        .send()
+        .map_err(|e| format!("Connection failed : {e}"))?;
+    decode_auth_response(resp).map(|body| {
+        info!(target: "bse::auth", user = %body.display_name, "session refreshed");
+        body.into()
+    })
+}
+
+fn http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn decode_auth_response(resp: reqwest::blocking::Response) -> Result<AuthResponse, String> {
     let status = resp.status();
     if status.is_success() {
-        let body: AuthResponse = resp.json().map_err(|e| e.to_string())?;
+        resp.json::<AuthResponse>().map_err(|e| e.to_string())
+    } else {
+        let msg = resp
+            .json::<AuthError>()
+            .map_or_else(|_| format!("Request failed (HTTP {status})"), |e| e.message);
+        Err(msg)
+    }
+}
+
+impl From<AuthResponse> for SessionState {
+    fn from(body: AuthResponse) -> Self {
         let user_id = body
             .user_id
             .parse::<UserId>()
-            .map_err(|e| format!("Invalid user id from server : {e}"))?;
-        info!(target: "bse::auth", user = %body.display_name, "signed in");
-        Ok(SessionState::SignedIn {
+            .unwrap_or_else(|_| UserId::new());
+        Self::SignedIn {
             user_id,
             display_name: body.display_name,
             access_token: body.access_token,
             refresh_token: body.refresh_token,
             access_expires_at: body.access_expires_at,
-        })
-    } else {
-        let msg = resp
-            .json::<AuthError>()
-            .map_or_else(|_| format!("Login failed (HTTP {status})"), |e| e.message);
-        Err(msg)
+        }
     }
 }
 

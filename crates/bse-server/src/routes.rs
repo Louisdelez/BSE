@@ -12,7 +12,7 @@ use axum::{
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::handlers::{
-    auth::{login, register},
+    auth::{login, refresh, register},
     health::health,
     info::info,
 };
@@ -38,6 +38,7 @@ pub fn router_with(state: AppState) -> Router {
         .route("/api/info", get(info))
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
+        .route("/api/auth/refresh", post(refresh))
         .route("/ws/rooms/:room_id", get(ws_room))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
