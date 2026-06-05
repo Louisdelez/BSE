@@ -33,9 +33,8 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: &mut CanvasState) {
     let icon_size = 44.0;
     let gap = 6.0;
     #[allow(clippy::cast_precision_loss)]
-    let bar_width = f32::from(u16::try_from(count).unwrap_or(0))
-        .mul_add(icon_size + gap, -gap)
-        + 24.0; // + inner padding
+    let bar_width =
+        f32::from(u16::try_from(count).unwrap_or(0)).mul_add(icon_size + gap, -gap) + 24.0; // + inner padding
 
     let center_x = parent_rect.center().x;
     let bottom_y = parent_rect.max.y - bottom_margin - bar_height;

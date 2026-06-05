@@ -19,9 +19,10 @@ pub const INTER: &str = "inter";
 pub fn install(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
 
-    fonts
-        .font_data
-        .insert(INTER.to_owned(), FontData::from_static(INTER_VARIABLE).into());
+    fonts.font_data.insert(
+        INTER.to_owned(),
+        FontData::from_static(INTER_VARIABLE).into(),
+    );
 
     fonts
         .families

@@ -9,8 +9,8 @@ pub mod motion;
 pub mod typography;
 
 use eframe::egui::{
-    self, Color32, Context, FontFamily, FontId, Margin, Rounding, Shadow, Stroke, Style,
-    TextStyle, Vec2, Visuals,
+    self, Color32, Context, FontFamily, FontId, Margin, Rounding, Shadow, Stroke, Style, TextStyle,
+    Vec2, Visuals,
 };
 
 /// Which theme mode the app is currently rendering in.
@@ -40,10 +40,9 @@ pub fn apply_bse_theme(ctx: &Context, mode: ThemeMode) {
         TextStyle::Heading,
         FontId::new(22.0, FontFamily::Proportional),
     );
-    style.text_styles.insert(
-        TextStyle::Body,
-        FontId::new(14.0, FontFamily::Proportional),
-    );
+    style
+        .text_styles
+        .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
     style.text_styles.insert(
         TextStyle::Button,
         FontId::new(14.0, FontFamily::Proportional),

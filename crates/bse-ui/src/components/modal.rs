@@ -87,8 +87,11 @@ impl<'a> Modal<'a> {
             .fixed_pos(screen.min)
             .show(ctx, |ui| {
                 let rect = ui.allocate_space(screen.size()).1;
-                ui.painter()
-                    .rect_filled(rect, Rounding::ZERO, Color32::from_black_alpha(backdrop_alpha));
+                ui.painter().rect_filled(
+                    rect,
+                    Rounding::ZERO,
+                    Color32::from_black_alpha(backdrop_alpha),
+                );
             });
 
         // Scale-in modal panel.

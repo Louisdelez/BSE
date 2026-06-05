@@ -5,7 +5,9 @@
 //! [`Card::yellow`] / [`Card::coral`] / [`Card::teal`] / [`Card::rose`]
 //! for the pastel feature variants from the Miro design system.
 
-use eframe::egui::{Color32, Frame, InnerResponse, Margin, Response, Rounding, Shadow, Stroke, Ui, Vec2};
+use eframe::egui::{
+    Color32, Frame, InnerResponse, Margin, Response, Rounding, Shadow, Stroke, Ui, Vec2,
+};
 
 use crate::theme::colors;
 
@@ -172,11 +174,7 @@ fn clamp_to_u8(v: f32) -> u8 {
 /// Returns the click response from the *whole card* (not from any inner
 /// widget) so feature code can do
 /// `if card_button(ui, Card::base(), |ui| ...).clicked() { ... }`.
-pub fn card_button<R>(
-    ui: &mut Ui,
-    card: Card,
-    inner: impl FnOnce(&mut Ui) -> R,
-) -> (Response, R) {
+pub fn card_button<R>(ui: &mut Ui, card: Card, inner: impl FnOnce(&mut Ui) -> R) -> (Response, R) {
     let id = ui.next_auto_id();
     ui.skip_ahead_auto_ids(1);
     let hover_t = ui.ctx().animate_value_with_time(
@@ -191,11 +189,8 @@ pub fn card_button<R>(
         let rect = ui.max_rect();
         if hover_t > 0.0 {
             let alpha = clamp_to_u8(hover_t * 8.0);
-            ui.painter().rect_filled(
-                rect,
-                Rounding::same(16.0),
-                Color32::from_white_alpha(alpha),
-            );
+            ui.painter()
+                .rect_filled(rect, Rounding::same(16.0), Color32::from_white_alpha(alpha));
         }
         inner(ui)
     });

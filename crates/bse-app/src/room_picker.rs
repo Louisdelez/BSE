@@ -143,10 +143,8 @@ impl RoomPicker {
         if let Some(rx) = self.invite_rx.as_ref() {
             match rx.try_recv() {
                 Ok(Ok(())) => {
-                    self.invite_notice = format!(
-                        "Invited {} to the room.",
-                        self.invite_email.trim()
-                    );
+                    self.invite_notice =
+                        format!("Invited {} to the room.", self.invite_email.trim());
                     self.invite_email.clear();
                     self.error.clear();
                     self.invite_rx = None;
@@ -380,34 +378,31 @@ impl RoomPicker {
                             .strong(),
                     );
                 });
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(
+                            PillButton::primary("Join")
+                                .min_size(egui::vec2(70.0, 36.0))
+                                .id_source(&format!("join-{}", room.id)),
+                        )
+                        .clicked()
+                    {
+                        *chosen = Some(room.id.clone());
+                    }
+                    if room.role == "owner" {
+                        ui.add_space(6.0);
                         if ui
                             .add(
-                                PillButton::primary("Join")
-                                    .min_size(egui::vec2(70.0, 36.0))
-                                    .id_source(&format!("join-{}", room.id)),
+                                PillButton::secondary("Invite")
+                                    .min_size(egui::vec2(72.0, 36.0))
+                                    .id_source(&format!("invite-{}", room.id)),
                             )
                             .clicked()
                         {
-                            *chosen = Some(room.id.clone());
+                            *invite_clicked = Some(room.id.clone());
                         }
-                        if room.role == "owner" {
-                            ui.add_space(6.0);
-                            if ui
-                                .add(
-                                    PillButton::secondary("Invite")
-                                        .min_size(egui::vec2(72.0, 36.0))
-                                        .id_source(&format!("invite-{}", room.id)),
-                                )
-                                .clicked()
-                            {
-                                *invite_clicked = Some(room.id.clone());
-                            }
-                        }
-                    },
-                );
+                    }
+                });
             });
         });
     }
@@ -420,64 +415,59 @@ impl RoomPicker {
         access_token: &str,
     ) {
         ui.add_space(4.0);
-        Card::base()
-            .padding(16.0)
-            .radius(12.0)
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(format!("Invite a member to {}", room.name))
-                        .color(colors::SLATE)
-                        .font(typography::size::body_sm())
-                        .strong(),
-                );
+        Card::base().padding(16.0).radius(12.0).show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(format!("Invite a member to {}", room.name))
+                    .color(colors::SLATE)
+                    .font(typography::size::body_sm())
+                    .strong(),
+            );
+            ui.add_space(8.0);
+            ui.add_enabled(
+                !self.busy(),
+                egui::TextEdit::singleline(&mut self.invite_email)
+                    .hint_text("email@example.com")
+                    .desired_width(f32::INFINITY)
+                    .margin(egui::vec2(12.0, 10.0))
+                    .font(typography::size::body_md()),
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        PillButton::primary("Send invite")
+                            .enabled(!self.busy() && !self.invite_email.trim().is_empty())
+                            .min_size(egui::vec2(0.0, 36.0))
+                            .id_source(&format!("invite-send-{}", room.id)),
+                    )
+                    .clicked()
+                {
+                    let email = self.invite_email.trim().to_string();
+                    self.kick_off_invite(server_http_base, access_token, &room.id, &email);
+                }
                 ui.add_space(8.0);
-                ui.add_enabled(
-                    !self.busy(),
-                    egui::TextEdit::singleline(&mut self.invite_email)
-                        .hint_text("email@example.com")
-                        .desired_width(f32::INFINITY)
-                        .margin(egui::vec2(12.0, 10.0))
-                        .font(typography::size::body_md()),
-                );
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(
-                            PillButton::primary("Send invite")
-                                .enabled(
-                                    !self.busy() && !self.invite_email.trim().is_empty(),
-                                )
-                                .min_size(egui::vec2(0.0, 36.0))
-                                .id_source(&format!("invite-send-{}", room.id)),
-                        )
-                        .clicked()
-                    {
-                        let email = self.invite_email.trim().to_string();
-                        self.kick_off_invite(server_http_base, access_token, &room.id, &email);
-                    }
-                    ui.add_space(8.0);
-                    if ui
-                        .add(
-                            PillButton::ghost("Close")
-                                .min_size(egui::vec2(0.0, 36.0))
-                                .id_source(&format!("invite-close-{}", room.id)),
-                        )
-                        .clicked()
-                    {
-                        self.invite_target = None;
-                        self.invite_email.clear();
-                        self.invite_notice.clear();
-                    }
-                });
-                if !self.invite_notice.is_empty() {
-                    ui.add_space(6.0);
-                    ui.label(
-                        egui::RichText::new(&self.invite_notice)
-                            .color(colors::SUCCESS)
-                            .font(typography::size::body_sm()),
-                    );
+                if ui
+                    .add(
+                        PillButton::ghost("Close")
+                            .min_size(egui::vec2(0.0, 36.0))
+                            .id_source(&format!("invite-close-{}", room.id)),
+                    )
+                    .clicked()
+                {
+                    self.invite_target = None;
+                    self.invite_email.clear();
+                    self.invite_notice.clear();
                 }
             });
+            if !self.invite_notice.is_empty() {
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(&self.invite_notice)
+                        .color(colors::SUCCESS)
+                        .font(typography::size::body_sm()),
+                );
+            }
+        });
     }
 }
 

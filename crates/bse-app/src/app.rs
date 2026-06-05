@@ -9,20 +9,20 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use bse_auth::SessionState;
-use egui_notify::Toasts;
 use bse_canvas::CanvasState;
+use bse_canvas::ToolKind;
 use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_spatial::Quadtree;
 use bse_storage::{LocalStorage, SqliteStorage};
 use bse_sync::{ClientConfig, ConnectionState};
 use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
-use bse_canvas::ToolKind;
 use bse_ui::{
     Command, CommandPaletteState, ConnectionStatus, DEFAULT_PALETTE, DEFAULT_SIZES,
     PenOptionsSelection, StatusInfo, ThemeMode, apply_bse_theme, command_palette, pen_options,
     status_bar, toolbar,
 };
 use eframe::egui;
+use egui_notify::Toasts;
 use tracing::{info, warn};
 
 use crate::APP_INFO;
@@ -500,8 +500,7 @@ impl BseApp {
             Command::new("room-switch", "Switch room…")
                 .with_category("Room")
                 .with_icon(egui_phosphor::regular::HOUSE),
-            Command::new("account-sign-out", "Sign out")
-                .with_category("Account"),
+            Command::new("account-sign-out", "Sign out").with_category("Account"),
         ];
 
         if let Some(id) = command_palette::show(ctx, &mut self.cmd_palette, &commands) {
@@ -565,11 +564,8 @@ impl BseApp {
             size: self.canvas.pen_style.size,
         };
         pen_options(ui, anchor, &mut selection, DEFAULT_PALETTE, DEFAULT_SIZES);
-        self.canvas.pen_style.color = bse_types::Color::rgb(
-            selection.color.r,
-            selection.color.g,
-            selection.color.b,
-        );
+        self.canvas.pen_style.color =
+            bse_types::Color::rgb(selection.color.r, selection.color.g, selection.color.b);
         self.canvas.pen_style.size = selection.size;
     }
 
@@ -631,10 +627,7 @@ impl BseApp {
         let Some(token) = self.session.access_token().map(str::to_owned) else {
             return;
         };
-        if let Some(room) =
-            self.room_picker
-                .show(ctx, &self.server_http_base, &token)
-        {
+        if let Some(room) = self.room_picker.show(ctx, &self.server_http_base, &token) {
             self.switch_room(room);
         }
 
@@ -739,8 +732,7 @@ fn connect_handle(
     let Ok(url) = std::env::var("BSE_SERVER_URL") else {
         return false;
     };
-    let display_name =
-        std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
+    let display_name = std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
     handle.send(SyncCmd::Connect(ClientConfig {
         server_url: url,
         room_id: room_id.to_string(),
@@ -814,10 +806,7 @@ impl eframe::App for BseApp {
             .peers
             .iter()
             .map(|(_, p)| {
-                let name = p
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| "Anon".to_string());
+                let name = p.display_name.clone().unwrap_or_else(|| "Anon".to_string());
                 let c = egui::Color32::from_rgb(p.color.r, p.color.g, p.color.b);
                 (name, c)
             })

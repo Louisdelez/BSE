@@ -98,7 +98,8 @@ pub fn pen_options(
         spread: -2.0,
         color: Color32::from_black_alpha(30),
     };
-    ui.painter().add(shadow.as_shape(bar_rect, Rounding::same(bar_h / 2.0)));
+    ui.painter()
+        .add(shadow.as_shape(bar_rect, Rounding::same(bar_h / 2.0)));
     ui.painter().rect(
         bar_rect,
         Rounding::same(bar_h / 2.0),
@@ -124,8 +125,11 @@ pub fn pen_options(
                 }
 
                 ui.add_space(group_gap);
-                let sep_rect = ui.allocate_exact_size(Vec2::new(1.0, swatch_size), Sense::hover()).0;
-                ui.painter().rect_filled(sep_rect, Rounding::ZERO, colors::HAIRLINE);
+                let sep_rect = ui
+                    .allocate_exact_size(Vec2::new(1.0, swatch_size), Sense::hover())
+                    .0;
+                ui.painter()
+                    .rect_filled(sep_rect, Rounding::ZERO, colors::HAIRLINE);
                 ui.add_space(group_gap);
 
                 for (i, size) in sizes.iter().enumerate() {
@@ -146,12 +150,7 @@ pub fn pen_options(
         });
 }
 
-fn color_swatch(
-    ui: &mut egui::Ui,
-    swatch: ColorSwatch,
-    selected: bool,
-    size: f32,
-) -> bool {
+fn color_swatch(ui: &mut egui::Ui, swatch: ColorSwatch, selected: bool, size: f32) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
@@ -172,13 +171,7 @@ fn color_swatch(
     response.on_hover_text("Pen color").clicked()
 }
 
-fn size_dot(
-    ui: &mut egui::Ui,
-    size: f32,
-    current: f32,
-    button_size: f32,
-    dot_radius: f32,
-) -> bool {
+fn size_dot(ui: &mut egui::Ui, size: f32, current: f32, button_size: f32, dot_radius: f32) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(button_size), Sense::click());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
@@ -191,9 +184,7 @@ fn size_dot(
         painter.circle_filled(rect.center(), button_size / 2.0, bg);
         painter.circle_filled(rect.center(), dot_radius, colors::INK);
     }
-    response
-        .on_hover_text(format!("Size {size:.0}"))
-        .clicked()
+    response.on_hover_text(format!("Size {size:.0}")).clicked()
 }
 
 fn sizes_normalized_radius(size: f32, sizes: &[f32]) -> f32 {

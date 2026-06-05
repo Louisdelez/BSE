@@ -170,11 +170,7 @@ pub fn show_modal(
 }
 
 #[allow(clippy::too_many_lines)]
-fn render_form(
-    ui: &mut egui::Ui,
-    form: &mut LoginForm,
-    server_url: &str,
-) -> Option<SessionState> {
+fn render_form(ui: &mut egui::Ui, form: &mut LoginForm, server_url: &str) -> Option<SessionState> {
     let mut result = None;
 
     ui.add_space(2.0);

@@ -141,7 +141,10 @@ pub async fn ws_room(
             },
             Err(err) => {
                 warn!(%room_id, error = %err, "membership lookup failed");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "membership lookup failed")
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "membership lookup failed",
+                )
                     .into_response();
             }
         }

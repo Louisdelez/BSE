@@ -42,10 +42,8 @@ impl ServerConfig {
                 .parse()
                 .expect("hard-coded default must parse")
         });
-        let data_dir = std::env::var(DATA_DIR_ENV).map_or_else(
-            |_| PathBuf::from(DEFAULT_DATA_DIR),
-            PathBuf::from,
-        );
+        let data_dir = std::env::var(DATA_DIR_ENV)
+            .map_or_else(|_| PathBuf::from(DEFAULT_DATA_DIR), PathBuf::from);
         Self {
             bind_addr,
             data_dir,

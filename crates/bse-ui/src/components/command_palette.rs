@@ -150,10 +150,7 @@ pub fn show(
             state.highlight = (state.highlight + 1) % filtered.len();
         }
         if i.key_pressed(Key::ArrowUp) && !filtered.is_empty() {
-            state.highlight = state
-                .highlight
-                .checked_sub(1)
-                .unwrap_or(filtered.len() - 1);
+            state.highlight = state.highlight.checked_sub(1).unwrap_or(filtered.len() - 1);
         }
     });
 
@@ -228,8 +225,7 @@ pub fn show(
                                     }
                                     last_category = cmd.category;
                                 }
-                                if let Some(id) = render_row(ui, cmd, i == state.highlight, enter)
-                                {
+                                if let Some(id) = render_row(ui, cmd, i == state.highlight, enter) {
                                     chosen = Some(id);
                                 }
                             }
@@ -257,17 +253,10 @@ pub fn show(
 }
 
 #[allow(clippy::too_many_lines)]
-fn render_row(
-    ui: &mut Ui,
-    cmd: &Command,
-    highlighted: bool,
-    enter: bool,
-) -> Option<&'static str> {
+fn render_row(ui: &mut Ui, cmd: &Command, highlighted: bool, enter: bool) -> Option<&'static str> {
     let row_height = 44.0;
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), row_height),
-        Sense::click(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::click());
 
     let bg = if highlighted {
         colors::SURFACE
@@ -378,10 +367,7 @@ mod tests {
 
     #[test]
     fn title_start_outranks_substring() {
-        let cs = vec![
-            cmd("a", "Open settings"),
-            cmd("b", "Settings export"),
-        ];
+        let cs = vec![cmd("a", "Open settings"), cmd("b", "Settings export")];
         let out = filter(&cs, "set");
         assert_eq!(out[0].id, "b", "title-start match should rank first");
     }

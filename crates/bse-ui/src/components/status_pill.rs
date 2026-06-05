@@ -26,7 +26,12 @@ impl PillTone {
     fn colors(self) -> (Color32, Color32) {
         match self {
             Self::Neutral => (
-                Color32::from_rgba_unmultiplied(colors::MUTED.r(), colors::MUTED.g(), colors::MUTED.b(), 30),
+                Color32::from_rgba_unmultiplied(
+                    colors::MUTED.r(),
+                    colors::MUTED.g(),
+                    colors::MUTED.b(),
+                    30,
+                ),
                 colors::STEEL,
             ),
             Self::Success => (
@@ -74,7 +79,9 @@ impl StatusPill {
     pub fn ui(self, ui: &mut Ui) -> egui::Response {
         let (bg, fg) = self.tone.colors();
         let font = typography::size::caption();
-        let galley = self.text.into_galley(ui, Some(egui::TextWrapMode::Extend), 0.0, font);
+        let galley = self
+            .text
+            .into_galley(ui, Some(egui::TextWrapMode::Extend), 0.0, font);
 
         let dot_w = if self.dot { 8.0 } else { 0.0 };
         let padding = Vec2::new(10.0, 4.0);
@@ -86,12 +93,7 @@ impl StatusPill {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
-            painter.rect(
-                rect,
-                Rounding::same(rect.height() / 2.0),
-                bg,
-                Stroke::NONE,
-            );
+            painter.rect(rect, Rounding::same(rect.height() / 2.0), bg, Stroke::NONE);
 
             let mut text_left = rect.min.x + padding.x;
             if self.dot {

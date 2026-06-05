@@ -155,11 +155,7 @@ pub async fn refresh(State(app): State<AppState>, Json(req): Json<RefreshRequest
             );
         }
         Err(e) => {
-            return err(
-                "invalid_refresh",
-                e.to_string(),
-                StatusCode::UNAUTHORIZED,
-            );
+            return err("invalid_refresh", e.to_string(), StatusCode::UNAUTHORIZED);
         }
     };
 

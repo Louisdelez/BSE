@@ -114,7 +114,11 @@ impl Widget for PillButton<'_> {
         let galley = text.into_galley(ui, Some(egui::TextWrapMode::Extend), 0.0, TextStyle::Button);
         let desired_size = (galley.size() + padding * 2.0).max(min_size.unwrap_or(Vec2::ZERO));
 
-        let sense = if enabled { Sense::click() } else { Sense::hover() };
+        let sense = if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
         let (rect, response) = ui.allocate_exact_size(desired_size, sense);
 
         // Animate hover progress 0 → 1 over DURATION_MICRO.
@@ -139,17 +143,8 @@ impl Widget for PillButton<'_> {
             // pill regardless of width.
             let radius = rect.height() / 2.0;
             let bg_rect = rect;
-            painter.rect(
-                bg_rect,
-                Rounding::same(radius),
-                style.fill,
-                style.stroke,
-            );
-            painter.galley(
-                rect.center() - galley.size() / 2.0,
-                galley,
-                style.text,
-            );
+            painter.rect(bg_rect, Rounding::same(radius), style.fill, style.stroke);
+            painter.galley(rect.center() - galley.size() / 2.0, galley, style.text);
         }
 
         response

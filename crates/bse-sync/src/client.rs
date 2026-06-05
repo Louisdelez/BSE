@@ -70,7 +70,11 @@ impl SyncClient {
     /// this milestone ; later versions will block until `Welcome` (or a
     /// timeout) before returning.
     pub async fn connect(config: ClientConfig) -> Result<Self, SyncError> {
-        let url = build_ws_url(&config.server_url, &config.room_id, config.auth_token.as_deref())?;
+        let url = build_ws_url(
+            &config.server_url,
+            &config.room_id,
+            config.auth_token.as_deref(),
+        )?;
         info!(url = %url, room_id = %config.room_id, "sync client connecting");
 
         let (stream, _response) = connect_async(url.as_str())

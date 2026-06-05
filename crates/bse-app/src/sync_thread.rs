@@ -172,10 +172,7 @@ impl WorkerState {
     }
 }
 
-async fn worker_loop(
-    mut cmd_rx: UnboundedReceiver<SyncCmd>,
-    event_tx: UnboundedSender<SyncEvent>,
-) {
+async fn worker_loop(mut cmd_rx: UnboundedReceiver<SyncCmd>, event_tx: UnboundedSender<SyncEvent>) {
     let mut state = WorkerState::new();
     let mut interval = tokio::time::interval(Duration::from_millis(33));
 
@@ -241,11 +238,7 @@ async fn worker_loop(
     }
 }
 
-async fn handle_cmd(
-    cmd: SyncCmd,
-    state: &mut WorkerState,
-    event_tx: &UnboundedSender<SyncEvent>,
-) {
+async fn handle_cmd(cmd: SyncCmd, state: &mut WorkerState, event_tx: &UnboundedSender<SyncEvent>) {
     match cmd {
         SyncCmd::Connect(config) => {
             state.last_config = Some(config.clone());

@@ -49,7 +49,9 @@ fn cors_layer() -> CorsLayer {
                 }
                 match HeaderValue::from_str(s) {
                     Ok(h) => allowed.push(h),
-                    Err(err) => warn!(target: "bse::server::cors", origin = %s, error = %err, "ignoring malformed origin"),
+                    Err(err) => {
+                        warn!(target: "bse::server::cors", origin = %s, error = %err, "ignoring malformed origin");
+                    }
                 }
             }
             if allowed.is_empty() {
@@ -116,10 +118,7 @@ pub fn router_with(state: AppState) -> Router {
     let room_routes = Router::new()
         .route("/api/rooms", get(list_rooms).post(create_room))
         .route("/api/rooms/:id/members", post(add_member))
-        .route(
-            "/api/rooms/:id/members/:user_id",
-            delete(remove_member),
-        );
+        .route("/api/rooms/:id/members/:user_id", delete(remove_member));
 
     let api = auth_routes.merge(room_routes);
 

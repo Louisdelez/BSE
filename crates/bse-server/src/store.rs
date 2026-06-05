@@ -319,11 +319,7 @@ impl ServerStore {
 
     /// Persist the latest known snapshot for `room_id`. Overwrites
     /// any existing row for that room.
-    pub fn save_room_snapshot(
-        &self,
-        room_id: &str,
-        bytes: &[u8],
-    ) -> Result<(), ServerStoreError> {
+    pub fn save_room_snapshot(&self, room_id: &str, bytes: &[u8]) -> Result<(), ServerStoreError> {
         let conn = self.lock()?;
         conn.execute(
             "INSERT INTO room_snapshots(room_id, bytes, updated_at) VALUES (?1, ?2, ?3) \
@@ -334,10 +330,7 @@ impl ServerStore {
     }
 
     /// Load the latest snapshot for `room_id`, if one was ever stored.
-    pub fn load_room_snapshot(
-        &self,
-        room_id: &str,
-    ) -> Result<Option<Vec<u8>>, ServerStoreError> {
+    pub fn load_room_snapshot(&self, room_id: &str) -> Result<Option<Vec<u8>>, ServerStoreError> {
         let conn = self.lock()?;
         let row = conn
             .query_row(
@@ -397,11 +390,7 @@ impl ServerStore {
 
     /// Drop a member from a room. Returns the number of rows removed
     /// (0 if the user was not a member).
-    pub fn remove_member(
-        &self,
-        room_id: &str,
-        user_id: UserId,
-    ) -> Result<usize, ServerStoreError> {
+    pub fn remove_member(&self, room_id: &str, user_id: UserId) -> Result<usize, ServerStoreError> {
         let conn = self.lock()?;
         let n = conn.execute(
             "DELETE FROM room_members WHERE room_id = ?1 AND user_id = ?2",
@@ -414,11 +403,9 @@ impl ServerStore {
     pub fn room_exists(&self, room_id: &str) -> Result<bool, ServerStoreError> {
         let conn = self.lock()?;
         let row: Option<i64> = conn
-            .query_row(
-                "SELECT 1 FROM rooms WHERE id = ?1",
-                params![room_id],
-                |r| r.get(0),
-            )
+            .query_row("SELECT 1 FROM rooms WHERE id = ?1", params![room_id], |r| {
+                r.get(0)
+            })
             .optional()?;
         Ok(row.is_some())
     }
@@ -441,10 +428,7 @@ impl ServerStore {
     }
 
     /// All rooms a user is a member of, ordered by most-recently-joined first.
-    pub fn list_user_rooms(
-        &self,
-        user_id: UserId,
-    ) -> Result<Vec<UserRoomRow>, ServerStoreError> {
+    pub fn list_user_rooms(&self, user_id: UserId) -> Result<Vec<UserRoomRow>, ServerStoreError> {
         let conn = self.lock()?;
         let mut stmt = conn.prepare(
             "SELECT r.id, r.name, r.created_by, r.created_at, m.role \
@@ -468,9 +452,8 @@ impl ServerStore {
             let created_by: UserId = created_by
                 .parse()
                 .map_err(|e: uuid::Error| ServerStoreError::Corruption(e.to_string()))?;
-            let role = RoomRole::parse(&role).ok_or_else(|| {
-                ServerStoreError::Corruption(format!("unknown role `{role}`"))
-            })?;
+            let role = RoomRole::parse(&role)
+                .ok_or_else(|| ServerStoreError::Corruption(format!("unknown role `{role}`")))?;
             out.push(UserRoomRow {
                 room: RoomRow {
                     id,
@@ -521,14 +504,8 @@ mod tests {
     #[test]
     fn duplicate_email_rejected() {
         let s = ServerStore::in_memory().unwrap();
-        assert!(
-            s.insert_user(UserId::new(), "a@b.c", "A", "h")
-                .unwrap()
-        );
-        assert!(
-            !s.insert_user(UserId::new(), "A@B.C", "A2", "h2")
-                .unwrap()
-        );
+        assert!(s.insert_user(UserId::new(), "a@b.c", "A", "h").unwrap());
+        assert!(!s.insert_user(UserId::new(), "A@B.C", "A2", "h2").unwrap());
     }
 
     #[test]

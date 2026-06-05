@@ -69,10 +69,7 @@ impl RoomManager {
     /// Register a new connection in `room_id`. Returns the freshly
     /// allocated [`ConnectionId`] and a receiver that yields every
     /// message that should be sent to *this* peer.
-    pub async fn join(
-        &self,
-        room_id: &str,
-    ) -> (ConnectionId, mpsc::UnboundedReceiver<Message>) {
+    pub async fn join(&self, room_id: &str) -> (ConnectionId, mpsc::UnboundedReceiver<Message>) {
         let (tx, rx) = mpsc::unbounded_channel::<Message>();
         let mut rooms = self.rooms.lock().await;
         let room = rooms.entry(room_id.to_string()).or_default();

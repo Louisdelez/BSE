@@ -15,11 +15,7 @@ pub fn avatar(ui: &mut Ui, display_name: &str, color: Color32, size: f32) -> egu
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         painter.circle_filled(rect.center(), size / 2.0, color);
-        painter.circle_stroke(
-            rect.center(),
-            size / 2.0,
-            Stroke::new(2.0, Color32::WHITE),
-        );
+        painter.circle_stroke(rect.center(), size / 2.0, Stroke::new(2.0, Color32::WHITE));
         painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -34,9 +30,7 @@ pub fn avatar(ui: &mut Ui, display_name: &str, color: Color32, size: f32) -> egu
 /// Pick a readable text color (black or white) for the given background
 /// using WCAG-style luminance.
 fn text_color_for(bg: Color32) -> Color32 {
-    let luma = 0.2126 * f32::from(bg.r())
-        + 0.7152 * f32::from(bg.g())
-        + 0.0722 * f32::from(bg.b());
+    let luma = 0.2126 * f32::from(bg.r()) + 0.7152 * f32::from(bg.g()) + 0.0722 * f32::from(bg.b());
     if luma > 140.0 {
         Color32::BLACK
     } else {
@@ -68,11 +62,7 @@ pub fn avatar_stack(
             if ui.is_rect_visible(rect) {
                 let painter = ui.painter();
                 painter.circle_filled(rect.center(), size / 2.0, crate::theme::colors::SURFACE);
-                painter.circle_stroke(
-                    rect.center(),
-                    size / 2.0,
-                    Stroke::new(2.0, Color32::WHITE),
-                );
+                painter.circle_stroke(rect.center(), size / 2.0, Stroke::new(2.0, Color32::WHITE));
                 painter.text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,

@@ -53,9 +53,10 @@ fn require_user(headers: &HeaderMap, app: &AppState) -> Result<UserId, Response>
                 StatusCode::UNAUTHORIZED,
             )
         })?;
-    let claims: Claims = app.jwt.verify(token).map_err(|e| {
-        err("invalid_token", e.to_string(), StatusCode::UNAUTHORIZED)
-    })?;
+    let claims: Claims = app
+        .jwt
+        .verify(token)
+        .map_err(|e| err("invalid_token", e.to_string(), StatusCode::UNAUTHORIZED))?;
     if claims.token_type != TokenType::Access {
         return Err(err(
             "wrong_token_type",
