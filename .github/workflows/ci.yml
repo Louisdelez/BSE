@@ -38,7 +38,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: clippy-${{ matrix.os }}
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
     name: cargo test (${{ matrix.os }})
@@ -53,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-${{ matrix.os }}
-      - run: cargo test --workspace --no-fail-fast
+      - run: cargo test --workspace --no-fail-fast --locked
 
   doc:
     name: cargo doc
