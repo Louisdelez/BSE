@@ -6,17 +6,21 @@
 //! [`SyncHandle`] is the egui-side entry point : it owns one channel
 //! for commands (egui → worker) and one for events (worker → egui).
 //!
-//! v010.1 is intentionally minimal :
+//! v010.3 wires CRDT ops over the same WebSocket :
 //! - cursor throttling at 30 Hz (already done by `bse-sync::LocalCursor`),
 //! - remote peer cursors decoded from awareness messages,
-//! - no automatic reconnect, no full op replay yet (that arrives with
-//!   the real room logic on the server side).
+//! - `SyncCmd::Op` ships a freshly-encoded CRDT snapshot to the room,
+//! - inbound `ServerMessage::Op` / `Snapshot` are surfaced as
+//!   `SyncEvent::RemoteOp` for the egui side to apply.
+//!
+//! Reconnect logic is still deferred ; the worker loop drops the
+//! connection on any stream error and waits for a fresh `Connect`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bse_protocol::{AwarenessPayload, ServerMessage};
+use bse_protocol::{AwarenessPayload, OpPayload, ServerMessage};
 use bse_sync::{ClientConfig, ConnectionState, LocalCursor, SyncClient};
 use bse_types::{Color, PeerId, Vec2};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -25,7 +29,7 @@ use tracing::{info, warn};
 /// Egui → worker commands.
 ///
 /// `Disconnect` is part of the public surface but is not yet wired
-/// from the UI ; v010.2 adds a settings dialog that uses it.
+/// from the UI ; a future settings dialog will use it.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum SyncCmd {
@@ -33,6 +37,8 @@ pub enum SyncCmd {
     Connect(ClientConfig),
     /// Push the current local cursor position. The worker throttles to 30 Hz.
     Cursor(Vec2),
+    /// Broadcast a fresh CRDT snapshot/update to the room.
+    Op(Vec<u8>),
     /// Politely close the connection.
     Disconnect,
 }
@@ -52,6 +58,8 @@ pub enum SyncEvent {
     },
     /// A peer has left the room.
     PeerLeave(PeerId),
+    /// A remote CRDT op (or snapshot) ready to be applied locally.
+    RemoteOp(Vec<u8>),
 }
 
 /// Egui-side handle to the worker thread.
@@ -135,6 +143,14 @@ async fn worker_loop(mut cmd_rx: UnboundedReceiver<SyncCmd>, event_tx: Unbounded
                 SyncCmd::Cursor(pos) => {
                     pending_cursor = Some(pos);
                 }
+                SyncCmd::Op(bytes) => {
+                    if let Some(c) = client.as_mut() {
+                        let payload = OpPayload { seq: 0, bytes };
+                        if let Err(err) = c.send_op(payload).await {
+                            warn!(target: "bse::sync", error = %err, "send_op failed");
+                        }
+                    }
+                }
                 SyncCmd::Disconnect => {
                     if let Some(c) = client.take() {
                         let _ = c.close().await;
@@ -204,13 +220,16 @@ fn translate_message(
                 });
             }
         }
-        ServerMessage::Welcome(_)
-        | ServerMessage::Snapshot(_)
-        | ServerMessage::Op(_)
-        | ServerMessage::Error(_)
-        | ServerMessage::Pong(_) => {
-            // v010.1 only cares about awareness. The other variants
-            // will be wired in as the related milestones land.
+        ServerMessage::Op(op) => {
+            let _ = event_tx.send(SyncEvent::RemoteOp(op.bytes));
         }
+        ServerMessage::Snapshot(s) => {
+            // v010.3 : the server broadcasts our own client-emitted
+            // snapshots as `Op`, but a real server may also push a
+            // `Snapshot` on join. Yrs accepts both formats indifferently
+            // through `apply_remote_update`.
+            let _ = event_tx.send(SyncEvent::RemoteOp(s.bytes));
+        }
+        ServerMessage::Welcome(_) | ServerMessage::Error(_) | ServerMessage::Pong(_) => {}
     }
 }

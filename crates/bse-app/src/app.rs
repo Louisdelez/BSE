@@ -270,9 +270,37 @@ impl BseApp {
                         self.peers.on_cursor(peer_id, position);
                     }
                 }
+                SyncEvent::RemoteOp(bytes) => {
+                    if let Err(err) = self.crdt.apply_remote_update(&bytes) {
+                        warn!(target: "bse::app", error = %err, "apply_remote_update failed");
+                    } else {
+                        self.dirty = true;
+                        self.last_element_count = self.crdt.element_count();
+                    }
+                }
             }
         }
         self.peers.prune_stale();
+    }
+
+    /// Encode the current CRDT state and ship it to the room.
+    ///
+    /// v010.3 is intentionally simple : every local mutation pushes a
+    /// full snapshot. Yrs deltas are bandwidth-efficient enough at this
+    /// scale (small boards, single-digit MB) and avoid the bookkeeping
+    /// needed to ship per-mutation update vectors. Switching to deltas
+    /// is tracked as a future optimisation.
+    fn broadcast_local_state(&mut self) {
+        let Some(sync) = self.sync.as_ref() else {
+            return;
+        };
+        if !matches!(self.connection_state, ConnectionState::Connected) {
+            return;
+        }
+        match self.crdt.encode_snapshot() {
+            Ok(bytes) => sync.send(SyncCmd::Op(bytes)),
+            Err(err) => warn!(target: "bse::app", error = %err, "encode_snapshot failed"),
+        }
     }
 
     /// Show the login modal if the user is signed out AND a server is
@@ -412,6 +440,7 @@ impl eframe::App for BseApp {
         if current != self.last_element_count {
             self.dirty = true;
             self.last_element_count = current;
+            self.broadcast_local_state();
         }
         self.autosave_if_due();
 
