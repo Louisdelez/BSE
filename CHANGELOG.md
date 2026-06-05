@@ -8,10 +8,50 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v008` / `v009` / `v011` (code prêt par agents, commits séparés) :
-- `bse-server` : axum + WebSocket route + handlers (v008)
-- `bse-crdt::YrsBackend` (v009)
-- `bse-storage::SqliteStorage` (v011)
+À venir dans `v009` :
+- `bse-crdt::YrsBackend` — code prêt par agent
+
+À venir dans `v011` :
+- `bse-storage::SqliteStorage` — code prêt par agent
+
+---
+
+## [v008] — 2026-06-05
+
+### 🌐 Server foundation — axum + WebSocket
+
+Premier serveur HTTP fonctionnel. Routes basiques (`/health`, `/api/info`),
+WebSocket echo (`/ws/rooms/:room_id`), graceful shutdown sur Ctrl-C.
+Pas encore de logique de room collaborative (CRDT en v009).
+
+### 🎉 Added (par agent en parallèle)
+
+**`bse-server`**
+- Modules dédiés (tous < 300 lignes) :
+  - `main.rs` : tokio entry, listen + graceful shutdown
+  - `lib.rs` : facade pour les tests d'intégration
+  - `config.rs` : `ServerConfig::from_env()` (var `BSE_BIND_ADDR`)
+  - `routes.rs` : assembly `axum::Router` + TraceLayer + CORS
+  - `tracing_setup.rs` : init `tracing` (mirror bse-app)
+  - `handlers/health.rs` : `GET /health → {"status":"ok"}`
+  - `handlers/info.rs` : `GET /api/info → {name, version, protocol}`
+  - `ws/upgrade.rs` : `GET /ws/rooms/:room_id` echo (text+binary)
+- 4 tests unitaires + 3 tests d'intégration via `tower::ServiceExt::oneshot`.
+
+### 🛠 Dépendances ajoutées (à `bse-server` uniquement)
+- `axum = "0.7"` avec feature `ws`
+- `tokio = "1"` features `full`
+- `tower-http` (trace + cors)
+- `serde`, `serde_json` (workspace)
+
+### ✅ Smoke test manuel
+```bash
+cargo run -p bse-server &
+curl http://localhost:8080/health
+# {"status":"ok"}
+curl http://localhost:8080/api/info
+# {"name":"BSE Server","version":"0.0.2","protocol":"bse.v1"}
+```
 
 ---
 
