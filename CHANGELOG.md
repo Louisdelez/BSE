@@ -8,14 +8,72 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v006` :
-- Outil Pen (perfect-freehand port Rust) — agent en parallèle
-- Crate `bse-pen` ajouté au workspace
-
 À venir dans `v007` :
-- Quadtree spatial index — agent en parallèle
+- Quadtree spatial index — code prêt (agent), intégration prochaine
 - Viewport culling intégré
 - Crate `bse-spatial` ajouté au workspace
+
+À venir dans `v008` / `v009` / `v011` (code prêt, intégrations séparées) :
+- `bse-server` : axum + WebSocket route + handlers (v008)
+- `bse-crdt::YrsBackend` (v009)
+- `bse-storage::SqliteStorage` (v011)
+
+---
+
+## [v006] — 2026-06-05
+
+### 🖋 Outil Pen — perfect-freehand porté en Rust
+
+Premier outil de dessin libre. L'utilisateur sélectionne **Pen** dans
+la toolbar, click + drag dans le canvas, et un tracé pressure-sensible
+apparaît, mimant naturellement l'encre. Algorithme `perfect-freehand`
+de Steve Ruiz porté en Rust (par un agent en parallèle).
+
+### 🎉 Added
+
+**Nouveau crate `bse-pen`** (porté par agent en parallèle)
+- Port complet du module `perfect-freehand` (~795 lignes en 5 modules
+  sous le plafond 300 lignes : `options.rs`, `outline.rs`, `stroke_points.rs`,
+  `vec.rs`, `lib.rs`).
+- Public API minimale :
+  - `InputPoint { x, y, pressure }`
+  - `StrokeOptions { size, thinning, smoothing, streamline, start_taper,
+    end_taper, simulate_pressure }`
+  - `get_stroke(points, options) -> Vec<bse_types::Vec2>` (outline polygon)
+- **17 tests verts** (16 unit + 1 doctest)
+- Aucune dépendance externe hors `bse-types`
+- Conventions Rust 2024 + `clippy pedantic` + `cargo fmt`
+
+**`bse-canvas`**
+- Nouvelle variante `ToolState::DrawingStroke { points: Vec<InputPoint> }`.
+- `bse-pen` ajouté comme dépendance.
+
+**`bse-app`**
+- `canvas/input.rs::handle_pen_drag` : gère le cycle drag pour le Pen
+  (accumule des points avec pression `0.5` par défaut, commit en élément
+  `Pen` à `drag_stopped`).
+- `canvas/draw.rs` :
+  - `commit_stroke(points)` : produit l'`Element` `Pen` final.
+  - `paint_stroke_outline()` : appelle `bse_pen::get_stroke` puis rend
+    le polygone via `egui::Shape::convex_polygon` (couleur du `PenStyle`).
+  - Le rendu fonctionne aussi bien pour la prévisualisation live que pour
+    les strokes commités.
+
+### 🔧 Changed
+- `bse-pen` réintégré aux workspace members.
+
+### 🛠 Qualité
+- `cargo clippy --workspace --all-targets -- -D warnings` ✅ pedantic
+- `cargo fmt --all -- --check` ✅
+- `cargo test --workspace` : **73 tests** verts (incluant les agents v008/v009/v011 dont les crates sont déjà compilés mais pas encore taggués)
+- Tous les fichiers < 300 lignes
+
+### 📌 Lancer
+```bash
+cargo run --release -p bse-app
+# Cliquer "Pen" dans la toolbar
+# Click + drag : un tracé naturel apparaît (perfect-freehand)
+```
 
 ---
 

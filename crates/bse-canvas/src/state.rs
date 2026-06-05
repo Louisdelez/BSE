@@ -1,6 +1,7 @@
 //! Mutable state owned by the canvas.
 
 use bse_model::Camera;
+use bse_pen::InputPoint;
 use bse_types::Vec2;
 
 use crate::tool::ToolKind;
@@ -36,7 +37,7 @@ impl CanvasState {
 ///
 /// Reset to [`ToolState::Idle`] between interactions and whenever the active
 /// tool changes.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum ToolState {
     /// No interaction in progress.
     #[default]
@@ -48,5 +49,11 @@ pub enum ToolState {
         anchor_world: Vec2,
         /// Current pointer position in world space (updated each frame).
         current_world: Vec2,
+    },
+    /// User is drawing a free-hand pen stroke. Points are accumulated
+    /// in world space at the current pressure.
+    DrawingStroke {
+        /// Stroke samples so far, in world space.
+        points: Vec<InputPoint>,
     },
 }

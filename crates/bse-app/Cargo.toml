@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 bse-canvas.workspace = true
 bse-model.workspace = true
+bse-pen.workspace = true
 bse-render.workspace = true
 bse-types.workspace = true
 bse-ui.workspace = true

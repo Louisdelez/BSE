@@ -301,6 +301,7 @@ version = "0.0.2"
 dependencies = [
  "bse-canvas",
  "bse-model",
+ "bse-pen",
  "bse-render",
  "bse-types",
  "bse-ui",
@@ -314,6 +315,7 @@ name = "bse-canvas"
 version = "0.0.2"
 dependencies = [
  "bse-model",
+ "bse-pen",
  "bse-types",
  "serde",
  "tracing",
@@ -337,6 +339,13 @@ version = "0.0.2"
 dependencies = [
  "bse-types",
  "serde",
+]
+
+[[package]]
+name = "bse-pen"
+version = "0.0.2"
+dependencies = [
+ "bse-types",
 ]
 
 [[package]]

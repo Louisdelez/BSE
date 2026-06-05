@@ -1,19 +1,15 @@
 [package]
-name = "bse-canvas"
+name = "bse-pen"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Canvas state machine for BSE : viewport, tools, selection, input."
+description = "Pressure-sensitive freehand stroke algorithm (Rust port of perfect-freehand)."
 
 [dependencies]
-bse-model.workspace = true
-bse-pen.workspace = true
 bse-types.workspace = true
-serde.workspace = true
-tracing.workspace = true
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }

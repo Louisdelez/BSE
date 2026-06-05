@@ -1,9 +1,13 @@
 //! Render scene elements and the in-progress tool preview via the
-//! `egui::Painter`. v005 uses the painter rather than a `wgpu` callback ;
-//! a real GPU pipeline will replace this in v009+.
+//! `egui::Painter`. v005 introduced shape rendering ; v006 adds pen
+//! stroke rendering using `bse-pen`.
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
-use bse_model::{Camera, Element, ElementKind, Scene, ShapeStyle, Style};
+use bse_model::{
+    Camera, Element, ElementKind, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style,
+    element::StrokePoint,
+};
+use bse_pen::{InputPoint, StrokeOptions, get_stroke};
 use bse_types::{Color, ElementId, PeerId, Rect as WorldRect, Transform, Vec2 as WorldVec2};
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Stroke};
 
@@ -28,18 +32,24 @@ pub fn tool_preview(
     viewport: WorldVec2,
     canvas: &CanvasState,
 ) {
-    if let ToolState::DrawingShape {
-        anchor_world,
-        current_world,
-    } = canvas.tool_state
-        && let Some(element) = preview_element(canvas.tool, anchor_world, current_world)
-    {
-        paint_element(painter, rect, camera, viewport, &element);
+    match &canvas.tool_state {
+        ToolState::Idle => {}
+        ToolState::DrawingShape {
+            anchor_world,
+            current_world,
+        } => {
+            if let Some(element) = preview_shape(canvas.tool, *anchor_world, *current_world) {
+                paint_element(painter, rect, camera, viewport, &element);
+            }
+        }
+        ToolState::DrawingStroke { points } => {
+            paint_stroke_outline(painter, rect, camera, viewport, points, preview_pen_color());
+        }
     }
 }
 
-/// Build an [`Element`] from a finished drag. Returns `None` if the
-/// drag was degenerate (less than 1 px world span on either axis).
+/// Build a final shape `Element` from a finished drag. Returns `None`
+/// for degenerate drags (less than 1 unit on either axis).
 #[must_use]
 pub fn commit_shape(tool: ToolKind, anchor: WorldVec2, current: WorldVec2) -> Option<Element> {
     let world_rect = WorldRect::from_two_points(anchor, current);
@@ -47,15 +57,42 @@ pub fn commit_shape(tool: ToolKind, anchor: WorldVec2, current: WorldVec2) -> Op
     if size.x.abs() < 1.0 || size.y.abs() < 1.0 {
         return None;
     }
-    element_for(tool, world_rect, default_style())
+    shape_element(tool, world_rect, default_shape_style())
 }
 
-fn preview_element(tool: ToolKind, anchor: WorldVec2, current: WorldVec2) -> Option<Element> {
+/// Build a final pen `Element` from accumulated stroke samples. Returns
+/// `None` if the input is empty.
+#[must_use]
+pub fn commit_stroke(points: &[InputPoint]) -> Option<Element> {
+    if points.is_empty() {
+        return None;
+    }
+    Some(Element {
+        id: ElementId::new_v7(),
+        kind: ElementKind::Pen {
+            points: points
+                .iter()
+                .map(|p| StrokePoint {
+                    x: p.x,
+                    y: p.y,
+                    pressure: p.pressure,
+                })
+                .collect(),
+        },
+        style: Style::Pen(ModelPenStyle::default()),
+        transform: Transform::IDENTITY,
+        z: 0,
+        created_by: PeerId::default(),
+        created_at: 0,
+    })
+}
+
+fn preview_shape(tool: ToolKind, anchor: WorldVec2, current: WorldVec2) -> Option<Element> {
     let world_rect = WorldRect::from_two_points(anchor, current);
-    element_for(tool, world_rect, preview_style())
+    shape_element(tool, world_rect, preview_shape_style())
 }
 
-fn element_for(tool: ToolKind, world_rect: WorldRect, style: ShapeStyle) -> Option<Element> {
+fn shape_element(tool: ToolKind, world_rect: WorldRect, style: ShapeStyle) -> Option<Element> {
     let kind = match tool {
         ToolKind::Rectangle => ElementKind::Rectangle {
             width: world_rect.width(),
@@ -70,19 +107,18 @@ fn element_for(tool: ToolKind, world_rect: WorldRect, style: ShapeStyle) -> Opti
         },
         _ => return None,
     };
-    let center = world_rect.center();
     Some(Element {
         id: ElementId::new_v7(),
         kind,
         style: Style::Shape(style),
-        transform: Transform::from_translation(center),
+        transform: Transform::from_translation(world_rect.center()),
         z: 0,
         created_by: PeerId::default(),
         created_at: 0,
     })
 }
 
-fn default_style() -> ShapeStyle {
+fn default_shape_style() -> ShapeStyle {
     ShapeStyle {
         stroke: Some(Color::rgb(0x1C, 0x1C, 0x1E)),
         stroke_width: 2.0,
@@ -92,7 +128,7 @@ fn default_style() -> ShapeStyle {
     }
 }
 
-fn preview_style() -> ShapeStyle {
+fn preview_shape_style() -> ShapeStyle {
     ShapeStyle {
         stroke: Some(Color::rgb(0x42, 0x62, 0xFF)),
         stroke_width: 1.5,
@@ -102,6 +138,10 @@ fn preview_style() -> ShapeStyle {
     }
 }
 
+fn preview_pen_color() -> Color {
+    Color::rgba(0x42, 0x62, 0xFF, 0xA0)
+}
+
 fn paint_element(
     painter: &egui::Painter,
     rect: Rect,
@@ -109,28 +149,43 @@ fn paint_element(
     viewport: WorldVec2,
     element: &Element,
 ) {
-    let Style::Shape(style) = &element.style else {
-        return; // Non-shape styles land in later milestones.
-    };
     let translation = element.transform.translation;
-    match element.kind {
-        ElementKind::Rectangle { width, height } => paint_rectangle(
-            painter,
-            rect,
-            camera,
-            viewport,
-            translation,
-            width,
-            height,
-            style,
-        ),
-        ElementKind::Ellipse { width, height } => {
-            paint_ellipse(painter, rect, camera, viewport, translation, width, height, style);
+    match (&element.kind, &element.style) {
+        (ElementKind::Rectangle { width, height }, Style::Shape(s)) => {
+            paint_rectangle(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                *width,
+                *height,
+                s,
+            );
         }
-        ElementKind::Line { end } => {
-            paint_line(painter, rect, camera, viewport, translation, end, style);
+        (ElementKind::Ellipse { width, height }, Style::Shape(s)) => {
+            paint_ellipse(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                *width,
+                *height,
+                s,
+            );
         }
-        ElementKind::Pen { .. } => { /* Pen lands in v006. */ }
+        (ElementKind::Line { end }, Style::Shape(s)) => {
+            paint_line(painter, rect, camera, viewport, translation, *end, s);
+        }
+        (ElementKind::Pen { points }, Style::Pen(s)) => {
+            let inputs: Vec<InputPoint> = points
+                .iter()
+                .map(|p| InputPoint::new(p.x, p.y, p.pressure))
+                .collect();
+            paint_stroke_outline(painter, rect, camera, viewport, &inputs, s.color);
+        }
+        _ => {}
     }
 }
 
@@ -148,12 +203,16 @@ fn paint_rectangle(
     let min = world_to_screen(camera, viewport, rect, center - half);
     let max = world_to_screen(camera, viewport, rect, center + half);
     let r = Rect::from_min_max(min, max);
+    let radius = Rounding::same(style.corner_radius * camera.zoom);
     if let Some(fill) = style.fill {
-        painter.rect_filled(r, Rounding::same(style.corner_radius * camera.zoom), to_color32(fill, style.opacity));
+        painter.rect_filled(r, radius, to_color32(fill, style.opacity));
     }
     if let Some(stroke_color) = style.stroke {
-        let stroke = Stroke::new(style.stroke_width * camera.zoom, to_color32(stroke_color, style.opacity));
-        painter.rect_stroke(r, Rounding::same(style.corner_radius * camera.zoom), stroke);
+        let stroke = Stroke::new(
+            style.stroke_width * camera.zoom,
+            to_color32(stroke_color, style.opacity),
+        );
+        painter.rect_stroke(r, radius, stroke);
     }
 }
 
@@ -180,7 +239,10 @@ fn paint_ellipse(
         painter.add(egui::Shape::ellipse_stroke(
             screen_center,
             radius,
-            Stroke::new(style.stroke_width * camera.zoom, to_color32(stroke_color, style.opacity)),
+            Stroke::new(
+                style.stroke_width * camera.zoom,
+                to_color32(stroke_color, style.opacity),
+            ),
         ));
     }
 }
@@ -194,13 +256,45 @@ fn paint_line(
     end: WorldVec2,
     style: &ShapeStyle,
 ) {
-    let Some(stroke_color) = style.stroke else { return };
+    let Some(stroke_color) = style.stroke else {
+        return;
+    };
     let p0 = world_to_screen(camera, viewport, rect, start);
     let p1 = world_to_screen(camera, viewport, rect, start + end);
     painter.line_segment(
         [p0, p1],
-        Stroke::new(style.stroke_width * camera.zoom, to_color32(stroke_color, style.opacity)),
+        Stroke::new(
+            style.stroke_width * camera.zoom,
+            to_color32(stroke_color, style.opacity),
+        ),
     );
+}
+
+fn paint_stroke_outline(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: &Camera,
+    viewport: WorldVec2,
+    points: &[InputPoint],
+    color: Color,
+) {
+    if points.len() < 2 {
+        return;
+    }
+    let outline = get_stroke(points, &StrokeOptions::default());
+    if outline.len() < 3 {
+        return;
+    }
+    let screen_points: Vec<Pos2> = outline
+        .into_iter()
+        .map(|p| world_to_screen(camera, viewport, rect, p))
+        .collect();
+    let fill = to_color32(color, 1.0);
+    painter.add(egui::Shape::convex_polygon(
+        screen_points,
+        fill,
+        Stroke::NONE,
+    ));
 }
 
 fn world_to_screen(camera: &Camera, viewport: WorldVec2, rect: Rect, world: WorldVec2) -> Pos2 {

@@ -3,19 +3,23 @@
 //! Conventions :
 //! - **Pan** : middle-mouse drag, OR primary drag while Space is held.
 //! - **Zoom** : scroll wheel, anchored at the cursor position.
-//! - **Drag-to-create** : primary drag while a shape tool (Rectangle,
-//!   Ellipse, Line) is active and Space is *not* held.
+//! - **Drag-to-create shape** : primary drag while a shape tool
+//!   (Rectangle, Ellipse, Line) is active and Space is *not* held.
+//! - **Drag-to-draw stroke** : primary drag while the Pen tool is
+//!   active and Space is *not* held.
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
 use bse_model::Scene;
+use bse_pen::InputPoint;
 use bse_types::Vec2 as WorldVec2;
 use eframe::egui::{self, Key, PointerButton, Rect, Response};
 
 use crate::canvas::draw;
 
-/// Multiplier applied to a single scroll-wheel notch. Tuned for ~10 %
-/// zoom change per wheel "click", matching Figma / Miro feel.
+/// Multiplier applied to a single scroll-wheel notch.
 const ZOOM_PER_SCROLL_UNIT: f32 = 0.005;
+/// Default mouse-input pressure (we don't yet read stylus pressure).
+const DEFAULT_PRESSURE: f32 = 0.5;
 
 /// Apply input from the current frame.
 pub fn apply(
@@ -29,7 +33,16 @@ pub fn apply(
     let space_held = ctx.input(|i| i.key_down(Key::Space));
     handle_pan(response, canvas, space_held);
     handle_zoom(ctx, response, rect, viewport, canvas);
-    handle_drawing(ctx, response, rect, viewport, canvas, scene, space_held);
+    if space_held {
+        return;
+    }
+    match canvas.tool {
+        ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Line => {
+            handle_shape_drag(ctx, response, rect, viewport, canvas, scene);
+        }
+        ToolKind::Pen => handle_pen_drag(ctx, response, rect, viewport, canvas, scene),
+        ToolKind::Select | ToolKind::Text => {}
+    }
 }
 
 fn handle_pan(response: &Response, canvas: &mut CanvasState, space_held: bool) {
@@ -37,9 +50,7 @@ fn handle_pan(response: &Response, canvas: &mut CanvasState, space_held: bool) {
     let primary_drag_with_space = response.dragged_by(PointerButton::Primary) && space_held;
     if middle_drag || primary_drag_with_space {
         let delta = response.drag_delta();
-        canvas
-            .camera
-            .pan_screen(WorldVec2::new(delta.x, delta.y));
+        canvas.camera.pan_screen(WorldVec2::new(delta.x, delta.y));
     }
 }
 
@@ -66,25 +77,14 @@ fn handle_zoom(
     canvas.camera.zoom_at(factor, viewport, cursor);
 }
 
-fn handle_drawing(
+fn handle_shape_drag(
     ctx: &egui::Context,
     response: &Response,
     rect: Rect,
     viewport: WorldVec2,
     canvas: &mut CanvasState,
     scene: &mut Scene,
-    space_held: bool,
 ) {
-    if !matches!(
-        canvas.tool,
-        ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Line
-    ) {
-        return;
-    }
-    if space_held {
-        return; // space-drag is reserved for pan
-    }
-
     if response.drag_started_by(PointerButton::Primary) {
         if let Some(start_world) = cursor_world(ctx, rect, viewport, canvas) {
             canvas.tool_state = ToolState::DrawingShape {
@@ -111,6 +111,35 @@ fn handle_drawing(
             scene.insert(element);
         }
         canvas.tool_state = ToolState::Idle;
+    }
+}
+
+fn handle_pen_drag(
+    ctx: &egui::Context,
+    response: &Response,
+    rect: Rect,
+    viewport: WorldVec2,
+    canvas: &mut CanvasState,
+    scene: &mut Scene,
+) {
+    if response.drag_started_by(PointerButton::Primary) {
+        if let Some(world) = cursor_world(ctx, rect, viewport, canvas) {
+            canvas.tool_state = ToolState::DrawingStroke {
+                points: vec![InputPoint::new(world.x, world.y, DEFAULT_PRESSURE)],
+            };
+        }
+    } else if response.dragged_by(PointerButton::Primary) {
+        // Compute cursor first (immutable borrow), then mutate.
+        let world = cursor_world(ctx, rect, viewport, canvas);
+        if let (Some(world), ToolState::DrawingStroke { points }) = (world, &mut canvas.tool_state)
+        {
+            points.push(InputPoint::new(world.x, world.y, DEFAULT_PRESSURE));
+        }
+    } else if response.drag_stopped_by(PointerButton::Primary)
+        && let ToolState::DrawingStroke { points } = std::mem::take(&mut canvas.tool_state)
+        && let Some(element) = draw::commit_stroke(&points)
+    {
+        scene.insert(element);
     }
 }
 
