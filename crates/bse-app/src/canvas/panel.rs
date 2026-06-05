@@ -1,23 +1,26 @@
 //! The central canvas widget.
 
 use bse_canvas::CanvasState;
+use bse_model::Scene;
 use bse_types::Vec2 as WorldVec2;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
-use crate::canvas::{grid, input};
+use crate::canvas::{draw, grid, input};
 
 /// Render the central canvas region. Returns the screen rectangle it occupies.
-pub fn show(ui: &mut egui::Ui, canvas: &mut CanvasState) -> Rect {
+pub fn show(ui: &mut egui::Ui, canvas: &mut CanvasState, scene: &mut Scene) -> Rect {
     let available = ui.available_size_before_wrap();
     let (response, painter) = ui.allocate_painter(available, Sense::click_and_drag());
     let rect = response.rect;
-    let viewport_pixels = WorldVec2::new(rect.width(), rect.height());
+    let viewport = WorldVec2::new(rect.width(), rect.height());
 
-    input::apply(ui.ctx(), &response, rect, viewport_pixels, canvas);
+    input::apply(ui.ctx(), &response, rect, viewport, canvas, scene);
 
     paint_background(&painter, rect);
-    grid::paint(&painter, rect, &canvas.camera, viewport_pixels);
-    paint_origin_marker(&painter, rect, canvas, viewport_pixels);
+    grid::paint(&painter, rect, &canvas.camera, viewport);
+    paint_origin_marker(&painter, rect, canvas, viewport);
+    draw::elements(&painter, rect, &canvas.camera, viewport, scene);
+    draw::tool_preview(&painter, rect, &canvas.camera, viewport, canvas);
 
     rect
 }

@@ -8,10 +8,65 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v005` :
-- Premier outil interactif : Rectangle (click + drag)
-- Premier paint callback `wgpu` réel : pipeline SDF pour les shapes
-- Stockage et rendu des éléments dans `bse-model::Scene`
+À venir dans `v006` :
+- Outil Pen (perfect-freehand port Rust) — agent en parallèle
+- Crate `bse-pen` ajouté au workspace
+
+À venir dans `v007` :
+- Quadtree spatial index — agent en parallèle
+- Viewport culling intégré
+- Crate `bse-spatial` ajouté au workspace
+
+---
+
+## [v005] — 2026-06-05
+
+### 🟨 Premier outil interactif : Rectangle
+
+L'utilisateur peut maintenant **dessiner** sur le canvas. Sélectionner
+l'outil Rectangle (ou Ellipse, Line), drag dans le canvas, et un élément
+persistent dans la scène. Brand yellow `#FFD02F` pour le fill, ink `#1C1C1E`
+pour le stroke — direct depuis le design system Miro.
+
+### 🎉 Added
+
+**`bse-canvas`**
+- `ToolState` enum : `Idle` ou `DrawingShape { anchor_world, current_world }`.
+- `CanvasState::set_tool` : switching d'outil réinitialise `ToolState`.
+- Réexport de `ToolState` depuis `lib.rs`.
+
+**`bse-app`**
+- `Scene` ajoutée à `BseApp` (stockage en mémoire des éléments).
+- Nouveau module `canvas/draw.rs` :
+  - `elements()` : itère les éléments z-sortés et les peint via `Painter`.
+  - `tool_preview()` : peint la forme en cours de drag (preview bleu transparent).
+  - `commit_shape()` : convertit un drag fini en `Element` (Rectangle / Ellipse / Line).
+  - Helpers `paint_rectangle` / `paint_ellipse` / `paint_line` / `world_to_screen`.
+- `canvas/input.rs` : `handle_drawing()` gère le cycle drag_started → dragged → drag_stopped pour les outils de shape.
+
+**`bse-ui`**
+- `toolbar` prend maintenant `&mut CanvasState` (au lieu de `&mut ToolKind`) pour invoquer `set_tool` et reset `ToolState`.
+- `StatusInfo::element_count` ajouté, affiché dans la status bar.
+
+### 🔧 Changed
+
+- `canvas::show(ui, canvas, scene)` : passe désormais aussi la Scene.
+- `bse-app/Cargo.toml` : `bse-crdt` retiré (sera réajouté en v009 avec yrs).
+- `Cargo.toml` workspace : `bse-pen` et `bse-spatial` déclarés en `[workspace.dependencies]` mais en `exclude` des members (ajoutés en v006 / v007 quand intégrés).
+
+### 🛠 Quality
+- `cargo check -p bse-app` ✅
+- `cargo clippy --all-targets -- -D warnings` (sur tous les crates non-agent) ✅ pedantic
+- `cargo test` : **32 tests verts**
+- Aucun fichier > 300 lignes
+
+### 📌 Lancer
+```bash
+cargo run --release -p bse-app
+# Sélectionner "Rect" dans la toolbar
+# Click + drag dans le canvas → un rectangle jaune apparaît
+# Switcher d'outil avec Select, Ellipse, Line, etc.
+```
 
 ---
 

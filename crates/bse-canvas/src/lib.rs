@@ -13,5 +13,5 @@
 mod state;
 mod tool;
 
-pub use state::CanvasState;
+pub use state::{CanvasState, ToolState};
 pub use tool::ToolKind;

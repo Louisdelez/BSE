@@ -13,6 +13,10 @@ members = [
     "crates/bse-app",
     "crates/bse-server",
 ]
+exclude = [
+    "crates/bse-pen",      # added in v006
+    "crates/bse-spatial",  # added in v007
+]
 
 [workspace.package]
 version = "0.0.2"
@@ -37,6 +41,8 @@ bse-canvas = { path = "crates/bse-canvas" }
 bse-storage = { path = "crates/bse-storage" }
 bse-sync = { path = "crates/bse-sync" }
 bse-ui = { path = "crates/bse-ui" }
+bse-pen = { path = "crates/bse-pen" }
+bse-spatial = { path = "crates/bse-spatial" }
 
 # Foundation
 serde = { version = "1", features = ["derive"] }

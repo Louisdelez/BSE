@@ -1,6 +1,7 @@
 //! Mutable state owned by the canvas.
 
 use bse_model::Camera;
+use bse_types::Vec2;
 
 use crate::tool::ToolKind;
 
@@ -11,6 +12,8 @@ pub struct CanvasState {
     pub camera: Camera,
     /// Currently active tool.
     pub tool: ToolKind,
+    /// Transient state for a tool that has a multi-frame interaction.
+    pub tool_state: ToolState,
 }
 
 impl CanvasState {
@@ -19,4 +22,31 @@ impl CanvasState {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Switch the active tool. Any in-progress tool interaction is dropped.
+    pub fn set_tool(&mut self, tool: ToolKind) {
+        if self.tool != tool {
+            self.tool_state = ToolState::Idle;
+        }
+        self.tool = tool;
+    }
+}
+
+/// Per-frame state for tools that span multiple frames (drag-to-draw, etc.).
+///
+/// Reset to [`ToolState::Idle`] between interactions and whenever the active
+/// tool changes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ToolState {
+    /// No interaction in progress.
+    #[default]
+    Idle,
+    /// User is drag-creating a shape. The anchor is in world coordinates
+    /// and is the first corner of the shape.
+    DrawingShape {
+        /// Anchor (start point) in world space.
+        anchor_world: Vec2,
+        /// Current pointer position in world space (updated each frame).
+        current_world: Vec2,
+    },
 }

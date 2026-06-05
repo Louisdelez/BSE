@@ -1,9 +1,11 @@
 //! Top-level [`eframe::App`] implementation for BSE.
 //!
-//! The `BseApp` owns the canvas state and orchestrates the layout
-//! between the toolbar, the central canvas panel, and the status bar.
+//! The `BseApp` owns the canvas state and the scene, and orchestrates
+//! the layout between the toolbar, the central canvas panel, and the
+//! status bar.
 
 use bse_canvas::CanvasState;
+use bse_model::Scene;
 use bse_ui::{StatusInfo, status_bar, toolbar};
 use eframe::egui;
 
@@ -13,6 +15,7 @@ use crate::canvas;
 /// Root application state.
 pub struct BseApp {
     canvas: CanvasState,
+    scene: Scene,
     fps: f32,
     last_frame: Option<std::time::Instant>,
 }
@@ -29,6 +32,7 @@ impl BseApp {
     pub fn new() -> Self {
         Self {
             canvas: CanvasState::new(),
+            scene: Scene::new(),
             fps: 0.0,
             last_frame: None,
         }
@@ -52,7 +56,7 @@ impl eframe::App for BseApp {
         self.update_fps();
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            toolbar(ui, &mut self.canvas.tool);
+            toolbar(ui, &mut self.canvas);
         });
 
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
@@ -64,12 +68,13 @@ impl eframe::App for BseApp {
                     fps: self.fps,
                     peer_count: 0,
                     tool: self.canvas.tool,
+                    element_count: u32::try_from(self.scene.len()).unwrap_or(u32::MAX),
                 },
             );
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            canvas::show(ui, &mut self.canvas);
+            canvas::show(ui, &mut self.canvas, &mut self.scene);
         });
 
         ctx.request_repaint();

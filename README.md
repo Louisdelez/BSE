@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Status: Scaffolding](https://img.shields.io/badge/Status-Scaffolding-blue.svg)](./docs)
-[![Version: v004](https://img.shields.io/badge/Version-v004-green.svg)](./CHANGELOG.md)
+[![Version: v005](https://img.shields.io/badge/Version-v005-green.svg)](./CHANGELOG.md)
 [![CI](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml/badge.svg)](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/lang-Rust-orange.svg)](https://www.rust-lang.org)
 
@@ -28,9 +28,9 @@ BSE permet à plusieurs personnes de **brainstormer ensemble en temps réel** su
 
 ## 📦 État du projet
 
-> **v004 — Canvas pan / zoom + grille adaptative.**
-> Vraie navigation infinie : Espace + drag pour pan, molette pour zoom centré sur le curseur.
-> Premier outil interactif (Rectangle) arrive en v005.
+> **v005 — Premier outil interactif : Rectangle (+ Ellipse + Line).**
+> Click + drag dans le canvas crée un élément qui persiste dans la scène.
+> Pen tool (perfect-freehand) en v006, Quadtree culling en v007 (agents en cours).
 
 Voir la [roadmap complète](./docs/00-VUE-ENSEMBLE/04-roadmap.md) et le [CHANGELOG](./CHANGELOG.md).
 
