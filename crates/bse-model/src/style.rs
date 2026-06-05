@@ -60,6 +60,21 @@ impl Default for PenStyle {
     }
 }
 
+/// Style applied to a text block.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextStyle {
+    /// Text color.
+    pub color: Color,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            color: Color::BLACK,
+        }
+    }
+}
+
 /// Tagged union of styles, used when an element's style varies by kind.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -68,6 +83,8 @@ pub enum Style {
     Shape(ShapeStyle),
     /// Style for pen strokes.
     Pen(PenStyle),
+    /// Style for text blocks.
+    Text(TextStyle),
 }
 
 impl Style {
@@ -81,5 +98,11 @@ impl Style {
     #[must_use]
     pub fn pen() -> Self {
         Self::Pen(PenStyle::default())
+    }
+
+    /// Default text style.
+    #[must_use]
+    pub fn text() -> Self {
+        Self::Text(TextStyle::default())
     }
 }

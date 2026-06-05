@@ -74,6 +74,13 @@ pub enum ElementKind {
         /// Sample points along the stroke (in local space).
         points: Vec<StrokePoint>,
     },
+    /// Single-line or wrapped text block.
+    Text {
+        /// Text content. Plain string for v013 ; rich-text comes later.
+        content: String,
+        /// Font size in world units. Default `16.0`.
+        font_size: f32,
+    },
 }
 
 impl ElementKind {
@@ -98,6 +105,27 @@ impl ElementKind {
                     }
                     Rect::from_min_max(min, max)
                 }
+            }
+            Self::Text { content, font_size } => {
+                // Approximation : average glyph ~ 0.55 × font_size wide,
+                // line height ~ 1.2 × font_size. Good enough for spatial
+                // index ; real bbox comes from font metrics at render time.
+                // Cast note : the visible line and char count of a text
+                // block stays well under `u32::MAX`, so the lossy cast is
+                // safe by construction.
+                #[allow(clippy::cast_precision_loss)]
+                let dims = {
+                    let line_count = content.lines().count().max(1) as f32;
+                    let max_chars = content
+                        .lines()
+                        .map(|l| l.chars().count())
+                        .max()
+                        .unwrap_or(1) as f32;
+                    (max_chars, line_count)
+                };
+                let width = dims.0 * font_size * 0.55;
+                let height = dims.1 * font_size * 1.2;
+                Rect::from_center_size(Vec2::ZERO, Vec2::new(width, height))
             }
         }
     }

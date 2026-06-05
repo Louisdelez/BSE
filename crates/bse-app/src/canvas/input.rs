@@ -41,7 +41,23 @@ pub fn apply(
             handle_shape_drag(ctx, response, rect, viewport, canvas, scene);
         }
         ToolKind::Pen => handle_pen_drag(ctx, response, rect, viewport, canvas, scene),
-        ToolKind::Select | ToolKind::Text => {}
+        ToolKind::Text => handle_text_click(ctx, response, rect, viewport, canvas, scene),
+        ToolKind::Select => {}
+    }
+}
+
+fn handle_text_click(
+    ctx: &egui::Context,
+    response: &Response,
+    rect: Rect,
+    viewport: WorldVec2,
+    canvas: &CanvasState,
+    scene: &mut Scene,
+) {
+    if response.clicked_by(PointerButton::Primary)
+        && let Some(world) = cursor_world(ctx, rect, viewport, canvas)
+    {
+        scene.insert(draw::commit_text(world));
     }
 }
 

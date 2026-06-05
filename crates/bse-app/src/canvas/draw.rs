@@ -4,7 +4,7 @@
 
 use bse_canvas::{CanvasState, ToolKind, ToolState};
 use bse_model::{
-    Camera, Element, ElementKind, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style,
+    Camera, Element, ElementKind, PenStyle as ModelPenStyle, Scene, ShapeStyle, Style, TextStyle,
     element::StrokePoint,
 };
 use bse_pen::{InputPoint, StrokeOptions, get_stroke};
@@ -73,6 +73,26 @@ pub fn commit_shape(tool: ToolKind, anchor: WorldVec2, current: WorldVec2) -> Op
         return None;
     }
     shape_element(tool, world_rect, default_shape_style())
+}
+
+/// Build a `Text` element at `position` with a placeholder content.
+///
+/// v013 spawns a `"Text"` placeholder ; inline editing comes in a later
+/// milestone.
+#[must_use]
+pub fn commit_text(position: WorldVec2) -> Element {
+    Element {
+        id: ElementId::new_v7(),
+        kind: ElementKind::Text {
+            content: "Text".to_string(),
+            font_size: 16.0,
+        },
+        style: Style::Text(TextStyle::default()),
+        transform: Transform::from_translation(position),
+        z: 0,
+        created_by: PeerId::default(),
+        created_at: 0,
+    }
 }
 
 /// Build a final pen `Element` from accumulated stroke samples. Returns
@@ -200,6 +220,18 @@ fn paint_element(
                 .collect();
             paint_stroke_outline(painter, rect, camera, viewport, &inputs, s.color);
         }
+        (ElementKind::Text { content, font_size }, Style::Text(s)) => {
+            paint_text(
+                painter,
+                rect,
+                camera,
+                viewport,
+                translation,
+                content,
+                *font_size,
+                s,
+            );
+        }
         _ => {}
     }
 }
@@ -282,6 +314,28 @@ fn paint_line(
             style.stroke_width * camera.zoom,
             to_color32(stroke_color, style.opacity),
         ),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_text(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: &Camera,
+    viewport: WorldVec2,
+    center: WorldVec2,
+    content: &str,
+    font_size: f32,
+    style: &TextStyle,
+) {
+    let screen_center = world_to_screen(camera, viewport, rect, center);
+    let screen_font_size = (font_size * camera.zoom).clamp(2.0, 256.0);
+    painter.text(
+        screen_center,
+        egui::Align2::CENTER_CENTER,
+        content,
+        egui::FontId::proportional(screen_font_size),
+        to_color32(style.color, 1.0),
     );
 }
 
