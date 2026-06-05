@@ -1,12 +1,12 @@
 //! Shared application state injected into every axum handler.
 //!
-//! Currently holds the [`UserStore`] and the [`JwtConfig`]. Will grow
-//! to include the room manager in v010.2.
+//! Holds the [`UserStore`], the [`JwtConfig`] and the [`RoomManager`].
 
 use std::sync::Arc;
 
 use bse_auth::{DEFAULT_ACCESS_TTL, DEFAULT_REFRESH_TTL, JwtConfig};
 
+use crate::rooms::RoomManager;
 use crate::users::UserStore;
 
 /// Shared state injected into handlers as `axum::extract::State<AppState>`.
@@ -16,6 +16,8 @@ pub struct AppState {
     pub users: Arc<UserStore>,
     /// JWT configuration (secret, issuer, TTLs).
     pub jwt: Arc<JwtConfig>,
+    /// Per-room broadcast registry (v010.2).
+    pub rooms: RoomManager,
 }
 
 impl AppState {
@@ -42,6 +44,7 @@ impl AppState {
         Self {
             users: Arc::new(users),
             jwt: Arc::new(jwt),
+            rooms: RoomManager::new(),
         }
     }
 }

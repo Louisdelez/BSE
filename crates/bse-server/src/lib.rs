@@ -12,6 +12,7 @@
 
 pub mod config;
 pub mod handlers;
+pub mod rooms;
 pub mod routes;
 pub mod state;
 pub mod users;

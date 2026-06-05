@@ -26,7 +26,8 @@ use crate::ws::ws_room;
 /// - `GET  /api/info`             — server identity and protocol version.
 /// - `POST /api/auth/login`       — verify credentials, return JWTs (v016.1).
 /// - `POST /api/auth/register`    — create a new user (v016.1).
-/// - `GET  /ws/rooms/:room_id`    — WebSocket upgrade (echo loop, v008).
+/// - `GET  /ws/rooms/:room_id`    — WebSocket upgrade with per-room
+///   broadcast (v010.2).
 ///
 /// Middleware :
 /// - `TraceLayer` — per-request structured logs.

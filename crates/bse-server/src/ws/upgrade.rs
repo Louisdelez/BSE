@@ -1,61 +1,78 @@
-//! WebSocket upgrade handler and per-connection echo loop.
+//! WebSocket upgrade handler with per-room broadcast (v010.2).
+//!
+//! Each connection is registered in the [`crate::rooms::RoomManager`]
+//! on upgrade. Inbound binary / text frames are fanned out to every
+//! other peer in the same room, replacing the per-connection echo loop
+//! used in v008.
 
 use axum::{
     extract::{
-        Path,
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use tracing::{debug, info, warn};
 
-/// Upgrade an HTTP request to a WebSocket bound to a given room.
-///
-/// The `room_id` path segment is captured but, in v008, it is only
-/// used for logging. The real room registry arrives in v009.
-pub async fn ws_room(ws: WebSocketUpgrade, Path(room_id): Path<String>) -> impl IntoResponse {
+use crate::state::AppState;
+
+/// Upgrade an HTTP request to a WebSocket bound to `room_id`.
+pub async fn ws_room(
+    State(app): State<AppState>,
+    ws: WebSocketUpgrade,
+    Path(room_id): Path<String>,
+) -> Response {
     info!(%room_id, "websocket upgrade requested");
-    ws.on_upgrade(move |socket| handle_socket(socket, room_id))
+    ws.on_upgrade(move |socket| handle_socket(app, socket, room_id))
+        .into_response()
 }
 
-/// Per-connection task : echo every Text/Binary frame back, then quit
-/// when the peer sends Close or the transport errors out.
-async fn handle_socket(mut socket: WebSocket, room_id: String) {
-    info!(%room_id, "websocket connected");
+/// Per-connection task : join the room, then loop on
+/// `socket.recv()` / `inbox.recv()`, broadcasting inbound frames to
+/// every other peer in the same room.
+async fn handle_socket(app: AppState, mut socket: WebSocket, room_id: String) {
+    let (conn_id, mut inbox) = app.rooms.join(&room_id).await;
+    info!(%room_id, connection_id = conn_id.0, "websocket connected");
 
-    while let Some(msg) = socket.recv().await {
-        let msg = match msg {
-            Ok(m) => m,
-            Err(err) => {
-                warn!(%room_id, error = %err, "websocket receive error, closing");
-                break;
+    loop {
+        tokio::select! {
+            incoming = socket.recv() => {
+                let Some(msg) = incoming else {
+                    info!(%room_id, connection_id = conn_id.0, "socket closed by peer");
+                    break;
+                };
+                let msg = match msg {
+                    Ok(m) => m,
+                    Err(err) => {
+                        warn!(%room_id, error = %err, "websocket receive error, closing");
+                        break;
+                    }
+                };
+                match msg {
+                    Message::Close(frame) => {
+                        info!(%room_id, ?frame, "websocket close frame received");
+                        break;
+                    }
+                    Message::Ping(_) | Message::Pong(_) => {}
+                    other => {
+                        debug!(%room_id, "broadcasting frame to peers");
+                        app.rooms.broadcast(&room_id, conn_id, &other).await;
+                    }
+                }
             }
-        };
-
-        match msg {
-            Message::Text(text) => {
-                debug!(%room_id, bytes = text.len(), "echo text");
-                if let Err(err) = socket.send(Message::Text(text)).await {
+            outgoing = inbox.recv() => {
+                let Some(frame) = outgoing else {
+                    debug!(%room_id, "inbox closed");
+                    break;
+                };
+                if let Err(err) = socket.send(frame).await {
                     warn!(%room_id, error = %err, "websocket send error, closing");
                     break;
                 }
-            }
-            Message::Binary(bin) => {
-                debug!(%room_id, bytes = bin.len(), "echo binary");
-                if let Err(err) = socket.send(Message::Binary(bin)).await {
-                    warn!(%room_id, error = %err, "websocket send error, closing");
-                    break;
-                }
-            }
-            Message::Ping(_) | Message::Pong(_) => {
-                // axum auto-replies to Ping with Pong; nothing to do.
-            }
-            Message::Close(frame) => {
-                info!(%room_id, ?frame, "websocket close frame received");
-                break;
             }
         }
     }
 
-    info!(%room_id, "websocket disconnected");
+    app.rooms.leave(&room_id, conn_id).await;
+    info!(%room_id, connection_id = conn_id.0, "websocket disconnected");
 }

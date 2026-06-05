@@ -1,7 +1,8 @@
 //! WebSocket handling for `/ws/rooms/:room_id`.
 //!
-//! v008 ships a naive echo loop. A real room manager — wiring CRDT
-//! ops, awareness, and persistence — lands in v009.
+//! Each connection joins the [`crate::rooms::RoomManager`] on upgrade.
+//! Inbound binary / text frames are broadcast to every other peer in
+//! the same room (v010.2).
 
 pub mod upgrade;
 
