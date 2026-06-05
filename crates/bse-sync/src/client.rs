@@ -42,6 +42,12 @@ pub struct ClientConfig {
     pub peer_id: PeerId,
     /// Display name used by other peers when rendering awareness.
     pub display_name: String,
+    /// Optional JWT access token passed as `?token=...` on the WS URL.
+    ///
+    /// Required when the server is started with `BSE_REQUIRE_AUTH=1` ;
+    /// ignored otherwise. The token is verified by the server before the
+    /// WebSocket upgrade completes — an invalid token yields a 401.
+    pub auth_token: Option<String>,
 }
 
 /// Live WebSocket connection to a BSE room.
@@ -64,7 +70,7 @@ impl SyncClient {
     /// this milestone ; later versions will block until `Welcome` (or a
     /// timeout) before returning.
     pub async fn connect(config: ClientConfig) -> Result<Self, SyncError> {
-        let url = build_ws_url(&config.server_url, &config.room_id)?;
+        let url = build_ws_url(&config.server_url, &config.room_id, config.auth_token.as_deref())?;
         info!(url = %url, room_id = %config.room_id, "sync client connecting");
 
         let (stream, _response) = connect_async(url.as_str())
@@ -180,8 +186,13 @@ impl SyncClient {
     }
 }
 
-/// Build the full `ws[s]://host/ws/rooms/{room_id}` URL.
-fn build_ws_url(server_url: &str, room_id: &str) -> Result<Url, SyncError> {
+/// Build the full `ws[s]://host/ws/rooms/{room_id}` URL, optionally
+/// appending `?token=...` when `auth_token` is provided.
+fn build_ws_url(
+    server_url: &str,
+    room_id: &str,
+    auth_token: Option<&str>,
+) -> Result<Url, SyncError> {
     let base = Url::parse(server_url)
         .map_err(|e| SyncError::Connection(format!("invalid server URL : {e}")))?;
 
@@ -195,8 +206,15 @@ fn build_ws_url(server_url: &str, room_id: &str) -> Result<Url, SyncError> {
     }
 
     let path = format!("/ws/rooms/{room_id}");
-    base.join(&path)
-        .map_err(|e| SyncError::Connection(format!("URL join : {e}")))
+    let mut url = base
+        .join(&path)
+        .map_err(|e| SyncError::Connection(format!("URL join : {e}")))?;
+    if let Some(token) = auth_token
+        && !token.is_empty()
+    {
+        url.query_pairs_mut().append_pair("token", token);
+    }
+    Ok(url)
 }
 
 #[cfg(test)]
@@ -205,7 +223,7 @@ mod tests {
 
     #[test]
     fn build_ws_url_plain() {
-        let u = build_ws_url("ws://localhost:8080", "room-42").expect("valid");
+        let u = build_ws_url("ws://localhost:8080", "room-42", None).expect("valid");
         assert_eq!(u.scheme(), "ws");
         assert_eq!(u.host_str(), Some("localhost"));
         assert_eq!(u.port(), Some(8080));
@@ -214,21 +232,21 @@ mod tests {
 
     #[test]
     fn build_ws_url_secure() {
-        let u = build_ws_url("wss://bse.example.com", "abc").expect("valid");
+        let u = build_ws_url("wss://bse.example.com", "abc", None).expect("valid");
         assert_eq!(u.scheme(), "wss");
         assert_eq!(u.path(), "/ws/rooms/abc");
     }
 
     #[test]
     fn build_ws_url_rejects_http_scheme() {
-        let err = build_ws_url("http://localhost:8080", "x")
+        let err = build_ws_url("http://localhost:8080", "x", None)
             .expect_err("http should be rejected as the protocol mismatch is silent otherwise");
         assert!(matches!(err, SyncError::Connection(_)));
     }
 
     #[test]
     fn build_ws_url_rejects_garbage() {
-        let err = build_ws_url("not a url", "x").expect_err("garbage rejected");
+        let err = build_ws_url("not a url", "x", None).expect_err("garbage rejected");
         assert!(matches!(err, SyncError::Connection(_)));
     }
 

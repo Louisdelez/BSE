@@ -27,7 +27,7 @@ use crate::ws::ws_room;
 /// - `POST /api/auth/login`       — verify credentials, return JWTs (v016.1).
 /// - `POST /api/auth/register`    — create a new user (v016.1).
 /// - `GET  /ws/rooms/:room_id`    — WebSocket upgrade with per-room
-///   broadcast (v010.2).
+///   broadcast (v010.2) ; verifies JWT when `BSE_REQUIRE_AUTH=1` (v016.2).
 ///
 /// Middleware :
 /// - `TraceLayer` — per-request structured logs.

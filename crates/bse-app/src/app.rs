@@ -124,7 +124,7 @@ impl BseApp {
             .as_ref()
             .and_then(login::load_session)
             .unwrap_or_default();
-        let sync = spawn_sync_if_configured(local_peer_id);
+        let sync = spawn_sync_if_configured(local_peer_id, session.access_token().map(str::to_owned));
         Self {
             canvas: CanvasState::new(),
             crdt,
@@ -321,7 +321,10 @@ impl BseApp {
     }
 }
 
-fn spawn_sync_if_configured(local_peer_id: PeerId) -> Option<SyncHandle> {
+fn spawn_sync_if_configured(
+    local_peer_id: PeerId,
+    auth_token: Option<String>,
+) -> Option<SyncHandle> {
     let url = std::env::var("BSE_SERVER_URL").ok()?;
     let room = std::env::var("BSE_ROOM").unwrap_or_else(|_| DEFAULT_ROOM.to_string());
     let display_name = std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
@@ -331,6 +334,7 @@ fn spawn_sync_if_configured(local_peer_id: PeerId) -> Option<SyncHandle> {
         room_id: room,
         peer_id: local_peer_id,
         display_name,
+        auth_token,
     }));
     Some(handle)
 }

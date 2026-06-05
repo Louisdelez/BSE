@@ -2,7 +2,8 @@
 //!
 //! Each connection joins the [`crate::rooms::RoomManager`] on upgrade.
 //! Inbound binary / text frames are broadcast to every other peer in
-//! the same room (v010.2).
+//! the same room (v010.2). When `BSE_REQUIRE_AUTH=1` the upgrade also
+//! verifies the JWT passed as `?token=...` (v016.2).
 
 pub mod upgrade;
 
