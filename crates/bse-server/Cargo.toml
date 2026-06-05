@@ -29,7 +29,9 @@ serde_json = { workspace = true }
 thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "limit", "set-header"] }
+tower_governor = "0.4"
+governor = "0.6"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

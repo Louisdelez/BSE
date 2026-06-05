@@ -7,6 +7,8 @@
 //! persisted snapshot via [`ServerMessage::Snapshot`] so it does not
 //! see an empty canvas when joining an active room.
 
+use std::time::{Duration, Instant};
+
 use axum::{
     extract::{
         Path, Query, State, WebSocketUpgrade,
@@ -22,6 +24,57 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use crate::state::AppState;
+
+/// Maximum size in bytes accepted for a single inbound binary / text
+/// frame. The desktop client ships snapshots that fit comfortably under
+/// 1 MiB ; anything larger is treated as either a bug or an attempt to
+/// exhaust server memory.
+const MAX_FRAME_BYTES: usize = 1 << 20; // 1 MiB
+
+/// Maximum number of inbound frames allowed per peer per
+/// [`THROTTLE_WINDOW`]. Excess frames are silently dropped on the
+/// receive side ; persistent offenders cause the connection to close.
+const THROTTLE_MAX_FRAMES: u32 = 50;
+
+/// Window over which [`THROTTLE_MAX_FRAMES`] is enforced.
+const THROTTLE_WINDOW: Duration = Duration::from_secs(1);
+
+/// Sliding-window token bucket scoped to a single connection.
+struct FrameRateLimiter {
+    window_start: Instant,
+    frames_in_window: u32,
+    /// Frames dropped since the window opened. Used to log once per
+    /// window rather than on every dropped frame.
+    dropped: u32,
+}
+
+impl FrameRateLimiter {
+    fn new() -> Self {
+        Self {
+            window_start: Instant::now(),
+            frames_in_window: 0,
+            dropped: 0,
+        }
+    }
+
+    /// Returns `true` if the caller is allowed to process this frame ;
+    /// `false` if the per-second budget is already exhausted.
+    fn accept(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.window_start) >= THROTTLE_WINDOW {
+            self.window_start = now;
+            self.frames_in_window = 0;
+            self.dropped = 0;
+        }
+        if self.frames_in_window < THROTTLE_MAX_FRAMES {
+            self.frames_in_window += 1;
+            true
+        } else {
+            self.dropped += 1;
+            false
+        }
+    }
+}
 
 /// Query-string parameters accepted on `/ws/rooms/{room_id}`.
 #[derive(Debug, Deserialize)]
@@ -103,6 +156,7 @@ pub async fn ws_room(
 /// snapshot if any, then loop on `socket.recv()` / `inbox.recv()`.
 async fn handle_socket(app: AppState, mut socket: WebSocket, room_id: String) {
     let (conn_id, mut inbox) = app.rooms.join(&room_id).await;
+    let mut throttle = FrameRateLimiter::new();
     info!(%room_id, connection_id = conn_id.0, "websocket connected");
 
     // v018 : replay the most recent snapshot to the joining peer so it
@@ -142,6 +196,31 @@ async fn handle_socket(app: AppState, mut socket: WebSocket, room_id: String) {
                     }
                     Message::Ping(_) | Message::Pong(_) => {}
                     other => {
+                        let size = frame_size(&other);
+                        if size > MAX_FRAME_BYTES {
+                            warn!(
+                                %room_id,
+                                connection_id = conn_id.0,
+                                size,
+                                limit = MAX_FRAME_BYTES,
+                                "frame exceeds size limit ; closing connection",
+                            );
+                            break;
+                        }
+                        if !throttle.accept() {
+                            // Drop the frame silently ; the client will
+                            // recover from a missed snapshot via the
+                            // next one. Persistent abuse is logged below.
+                            if throttle.dropped == 1 {
+                                warn!(
+                                    %room_id,
+                                    connection_id = conn_id.0,
+                                    max_per_second = THROTTLE_MAX_FRAMES,
+                                    "frame rate limit reached ; dropping",
+                                );
+                            }
+                            continue;
+                        }
                         debug!(%room_id, "broadcasting frame to peers");
                         app.rooms.broadcast(&room_id, conn_id, &other).await;
                     }
@@ -162,4 +241,35 @@ async fn handle_socket(app: AppState, mut socket: WebSocket, room_id: String) {
 
     app.rooms.leave(&room_id, conn_id).await;
     info!(%room_id, connection_id = conn_id.0, "websocket disconnected");
+}
+
+fn frame_size(msg: &Message) -> usize {
+    match msg {
+        Message::Text(s) => s.len(),
+        Message::Binary(b) | Message::Ping(b) | Message::Pong(b) => b.len(),
+        Message::Close(opt) => opt.as_ref().map_or(0, |c| c.reason.len()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn throttle_accepts_under_limit() {
+        let mut t = FrameRateLimiter::new();
+        for _ in 0..THROTTLE_MAX_FRAMES {
+            assert!(t.accept());
+        }
+    }
+
+    #[test]
+    fn throttle_drops_over_limit() {
+        let mut t = FrameRateLimiter::new();
+        for _ in 0..THROTTLE_MAX_FRAMES {
+            assert!(t.accept());
+        }
+        assert!(!t.accept());
+        assert_eq!(t.dropped, 1);
+    }
 }
