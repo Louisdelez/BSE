@@ -44,9 +44,15 @@ struct CreateRoomPayload<'a> {
     name: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+struct InvitePayload<'a> {
+    email: &'a str,
+}
+
 /// Background-task result : either an updated list, or an error string.
 type FetchResult = Result<Vec<RoomEntry>, String>;
 type CreateResult = Result<RoomEntry, String>;
+type InviteResult = Result<(), String>;
 
 /// In-memory state of the picker.
 #[derive(Default)]
@@ -57,10 +63,18 @@ pub struct RoomPicker {
     pub new_name: String,
     /// Last error shown to the user.
     pub error: String,
+    /// Room id currently expanded for the "invite a member" form.
+    invite_target: Option<String>,
+    /// User input for the invite-email field.
+    invite_email: String,
+    /// Confirmation flash to show after a successful invite.
+    invite_notice: String,
     /// Pending list-fetch result (background thread).
     fetch_rx: Option<mpsc::Receiver<FetchResult>>,
     /// Pending create-room result.
     create_rx: Option<mpsc::Receiver<CreateResult>>,
+    /// Pending invite result.
+    invite_rx: Option<mpsc::Receiver<InviteResult>>,
     /// `true` once an initial fetch has been kicked off — used to
     /// auto-refresh on first show without re-fetching every frame.
     initial_fetch_started: bool,
@@ -111,6 +125,25 @@ impl RoomPicker {
                 Err(mpsc::TryRecvError::Disconnected) => self.create_rx = None,
             }
         }
+        if let Some(rx) = self.invite_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(Ok(())) => {
+                    self.invite_notice = format!(
+                        "Invited {} to the room.",
+                        self.invite_email.trim()
+                    );
+                    self.invite_email.clear();
+                    self.error.clear();
+                    self.invite_rx = None;
+                }
+                Ok(Err(msg)) => {
+                    self.error = msg;
+                    self.invite_rx = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => self.invite_rx = None,
+            }
+        }
     }
 
     fn kick_off_fetch(&mut self, server_http_base: &str, access_token: &str) {
@@ -146,13 +179,38 @@ impl RoomPicker {
         self.create_rx = Some(rx);
     }
 
+    fn kick_off_invite(
+        &mut self,
+        server_http_base: &str,
+        access_token: &str,
+        room_id: &str,
+        email: &str,
+    ) {
+        if self.invite_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let base = server_http_base.to_string();
+        let token = access_token.to_string();
+        let room_id = room_id.to_string();
+        let email = email.to_string();
+        std::thread::Builder::new()
+            .name("bse-rooms-invite".into())
+            .spawn(move || {
+                let _ = tx.send(invite_member(&base, &token, &room_id, &email));
+            })
+            .ok();
+        self.invite_rx = Some(rx);
+    }
+
     /// `true` if a background HTTP call is in flight.
     fn busy(&self) -> bool {
-        self.fetch_rx.is_some() || self.create_rx.is_some()
+        self.fetch_rx.is_some() || self.create_rx.is_some() || self.invite_rx.is_some()
     }
 
     /// Render the picker as a modal window. Returns the picked room id
     /// when the user clicks "Join" on a row.
+    #[allow(clippy::too_many_lines)]
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -179,10 +237,11 @@ impl RoomPicker {
                 if self.rooms.is_empty() && !self.busy() {
                     ui.small("No rooms yet — create your first one below.");
                 }
+                let rooms = self.rooms.clone();
+                let mut invite_clicked: Option<String> = None;
                 egui::ScrollArea::vertical()
-                    .max_height(200.0)
+                    .max_height(220.0)
                     .show(ui, |ui| {
-                        let rooms = self.rooms.clone();
                         for r in &rooms {
                             ui.horizontal(|ui| {
                                 ui.label(format!("{} ({})", r.name, r.role));
@@ -192,11 +251,60 @@ impl RoomPicker {
                                         if ui.small_button("Join").clicked() {
                                             chosen = Some(r.id.clone());
                                         }
+                                        if r.role == "owner"
+                                            && ui.small_button("Invite").clicked()
+                                        {
+                                            invite_clicked = Some(r.id.clone());
+                                        }
                                     },
                                 );
                             });
+                            if self.invite_target.as_deref() == Some(r.id.as_str()) {
+                                ui.indent("invite_form", |ui| {
+                                    ui.label(format!("Invite a member to {}", r.name));
+                                    ui.add_enabled(
+                                        !self.busy(),
+                                        egui::TextEdit::singleline(&mut self.invite_email)
+                                            .hint_text("email@example.com")
+                                            .desired_width(f32::INFINITY),
+                                    );
+                                    ui.horizontal(|ui| {
+                                        let send = ui
+                                            .add_enabled(
+                                                !self.busy()
+                                                    && !self.invite_email.trim().is_empty(),
+                                                egui::Button::new("Send invite"),
+                                            )
+                                            .clicked();
+                                        if send {
+                                            let email = self.invite_email.trim().to_string();
+                                            self.kick_off_invite(
+                                                server_http_base,
+                                                access_token,
+                                                &r.id,
+                                                &email,
+                                            );
+                                        }
+                                        if ui.small_button("Close").clicked() {
+                                            self.invite_target = None;
+                                            self.invite_email.clear();
+                                            self.invite_notice.clear();
+                                        }
+                                    });
+                                    if !self.invite_notice.is_empty() {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0x00, 0xB4, 0x73),
+                                            &self.invite_notice,
+                                        );
+                                    }
+                                });
+                            }
                         }
                     });
+                if let Some(id) = invite_clicked {
+                    self.invite_target = Some(id);
+                    self.invite_notice.clear();
+                }
 
                 ui.add_space(8.0);
                 ui.separator();
@@ -264,6 +372,31 @@ fn fetch_rooms(server_http_base: &str, access_token: &str) -> FetchResult {
             .text()
             .unwrap_or_else(|_| format!("Listing failed (HTTP {status})"));
         warn!(target: "bse::rooms", %status, "fetch_rooms failed");
+        Err(msg)
+    }
+}
+
+fn invite_member(
+    server_http_base: &str,
+    access_token: &str,
+    room_id: &str,
+    email: &str,
+) -> InviteResult {
+    let url = format!("{server_http_base}/api/rooms/{room_id}/members");
+    let client = http_client()?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(access_token)
+        .json(&InvitePayload { email })
+        .send()
+        .map_err(|e| format!("Connection failed : {e}"))?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(())
+    } else {
+        let msg = resp
+            .text()
+            .unwrap_or_else(|_| format!("Invite failed (HTTP {status})"));
         Err(msg)
     }
 }

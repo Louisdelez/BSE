@@ -5,6 +5,23 @@ use eframe::egui::{self, Color32, RichText};
 
 use crate::info::AppInfo;
 
+/// Connection status mirrored from `bse_sync::ConnectionState`.
+///
+/// Defined locally so `bse-ui` does not depend on the sync crate.
+/// The app maps between the two enums.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ConnectionStatus {
+    /// No server configured or user not signed in.
+    #[default]
+    Offline,
+    /// Currently attempting to connect.
+    Connecting,
+    /// Connected and synchronizing.
+    Connected,
+    /// Lost connection, retrying with exponential backoff.
+    Reconnecting,
+}
+
 /// Snapshot of the values displayed in the status bar.
 #[derive(Clone, Copy, Debug)]
 pub struct StatusInfo {
@@ -16,6 +33,8 @@ pub struct StatusInfo {
     pub fps: f32,
     /// Number of connected peers (`0` when offline / solo).
     pub peer_count: u32,
+    /// Connection state used to render the bottom-right pill.
+    pub connection: ConnectionStatus,
     /// Currently active tool.
     pub tool: ToolKind,
     /// Number of elements currently in the scene.
@@ -44,21 +63,23 @@ pub fn status_bar(ui: &mut egui::Ui, info: StatusInfo) {
         ui.separator();
         ui.label(format!("FPS : {:>3.0}", info.fps));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let peers = info.peer_count;
-            let icon = if peers == 0 {
-                "● Offline"
-            } else {
-                "● Online"
-            };
-            let color = if peers == 0 {
-                Color32::from_rgb(0xA5, 0xA8, 0xB5)
-            } else {
-                Color32::from_rgb(0x00, 0xB4, 0x73)
-            };
-            ui.colored_label(color, icon);
-            if peers > 0 {
-                ui.label(format!("{peers} peer(s)"));
+            let (label, color) = connection_pill(info.connection);
+            ui.colored_label(color, label);
+            if info.peer_count > 0 {
+                ui.separator();
+                ui.label(format!("{} peer(s)", info.peer_count));
             }
         });
     });
+}
+
+fn connection_pill(status: ConnectionStatus) -> (&'static str, Color32) {
+    match status {
+        ConnectionStatus::Offline => ("● Offline", Color32::from_rgb(0xA5, 0xA8, 0xB5)),
+        ConnectionStatus::Connecting => ("● Connecting…", Color32::from_rgb(0xFF, 0xD0, 0x2F)),
+        ConnectionStatus::Connected => ("● Connected", Color32::from_rgb(0x00, 0xB4, 0x73)),
+        ConnectionStatus::Reconnecting => {
+            ("● Reconnecting…", Color32::from_rgb(0xE6, 0x9A, 0x00))
+        }
+    }
 }

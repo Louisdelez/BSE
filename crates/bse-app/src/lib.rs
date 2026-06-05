@@ -29,7 +29,7 @@ use crate::app::BseApp;
 pub const APP_INFO: AppInfo = AppInfo {
     name: "BSE",
     version: env!("CARGO_PKG_VERSION"),
-    milestone: "v021",
+    milestone: "v025",
 };
 
 /// Start the event loop and run BSE until the user closes the window.

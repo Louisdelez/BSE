@@ -12,5 +12,5 @@ mod status_bar;
 mod toolbar;
 
 pub use info::AppInfo;
-pub use status_bar::{StatusInfo, status_bar};
+pub use status_bar::{ConnectionStatus, StatusInfo, status_bar};
 pub use toolbar::toolbar;

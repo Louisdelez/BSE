@@ -15,7 +15,7 @@ use bse_spatial::Quadtree;
 use bse_storage::{LocalStorage, SqliteStorage};
 use bse_sync::{ClientConfig, ConnectionState};
 use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
-use bse_ui::{StatusInfo, status_bar, toolbar};
+use bse_ui::{ConnectionStatus, StatusInfo, status_bar, toolbar};
 use eframe::egui;
 use tracing::{info, warn};
 
@@ -634,6 +634,12 @@ impl eframe::App for BseApp {
             });
         });
 
+        let connection = match self.connection_state {
+            ConnectionState::Offline => ConnectionStatus::Offline,
+            ConnectionState::Connecting => ConnectionStatus::Connecting,
+            ConnectionState::Connected => ConnectionStatus::Connected,
+            ConnectionState::Reconnecting => ConnectionStatus::Reconnecting,
+        };
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             status_bar(
                 ui,
@@ -642,6 +648,7 @@ impl eframe::App for BseApp {
                     zoom: self.canvas.camera.zoom,
                     fps: self.fps,
                     peer_count: u32::try_from(self.peers.len()).unwrap_or(u32::MAX),
+                    connection,
                     tool: self.canvas.tool,
                     element_count: u32::try_from(self.crdt.element_count()).unwrap_or(u32::MAX),
                     visible_count: self.last_visible_count,
