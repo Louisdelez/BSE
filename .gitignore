@@ -48,10 +48,13 @@ config.local.toml
 *.log
 logs/
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.sqlite-journal
 *.db
 *.db-shm
 *.db-wal
+/data/
 
 # ─────────────────────────────────────────────
 # Coverage / profiling
