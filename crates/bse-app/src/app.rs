@@ -1,8 +1,9 @@
 //! Top-level [`eframe::App`] implementation for BSE.
 //!
 //! Owns the canvas state, the CRDT-backed document, the spatial index,
-//! the asset store, and the local persistence handle. Coordinates the
-//! layout between toolbar, canvas, and status bar.
+//! the asset store, the local persistence handle and (optionally) the
+//! sync worker thread. Coordinates the layout between toolbar, canvas,
+//! and status bar.
 
 use std::time::{Duration, Instant};
 
@@ -10,7 +11,8 @@ use bse_canvas::CanvasState;
 use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_spatial::Quadtree;
 use bse_storage::{LocalStorage, SqliteStorage};
-use bse_types::{ElementId, Rect as WorldRect, Vec2 as WorldVec2};
+use bse_sync::{ClientConfig, ConnectionState};
+use bse_types::{ElementId, PeerId, Rect as WorldRect, Vec2 as WorldVec2};
 use bse_ui::{StatusInfo, status_bar, toolbar};
 use eframe::egui;
 use tracing::{info, warn};
@@ -18,7 +20,9 @@ use tracing::{info, warn};
 use crate::APP_INFO;
 use crate::assets::AssetStore;
 use crate::canvas;
+use crate::peers::PeerStore;
 use crate::project_io;
+use crate::sync_thread::{SyncCmd, SyncEvent, SyncHandle};
 
 const SPATIAL_HALF_EXTENT: f32 = 1_000_000.0;
 const SPATIAL_MAX_ITEMS_PER_LEAF: usize = 16;
@@ -26,10 +30,12 @@ const SPATIAL_MAX_DEPTH: u32 = 10;
 
 /// Key used to autosave the current document in `SqliteStorage`.
 const AUTOSAVE_KEY: &str = "current-project";
-/// Minimum interval between two autosaves.
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(5);
 
 const IMAGE_PIXEL_WARN: u32 = 4096;
+
+/// Default room name used when `BSE_ROOM` is not set.
+const DEFAULT_ROOM: &str = "lobby";
 
 /// Root application state.
 pub struct BseApp {
@@ -44,6 +50,17 @@ pub struct BseApp {
     last_frame: Option<Instant>,
     last_visible_count: u32,
     last_element_count: usize,
+    /// `Some` if a sync worker thread was spawned at startup
+    /// (controlled by the `BSE_SERVER_URL` env var).
+    sync: Option<SyncHandle>,
+    /// Current state of the WebSocket connection (kept for the status bar).
+    connection_state: ConnectionState,
+    /// Remote peer cursors / names.
+    peers: PeerStore,
+    /// Stable identifier of the local peer for awareness messages.
+    local_peer_id: PeerId,
+    /// Last cursor position emitted to the sync thread (world coords).
+    last_emitted_cursor: Option<WorldVec2>,
 }
 
 impl Default for BseApp {
@@ -54,7 +71,8 @@ impl Default for BseApp {
 
 impl BseApp {
     /// Build a fresh app. Loads the previous session from the local
-    /// `SQLite` store if present ; falls back to an empty document.
+    /// `SQLite` store if present and, if `BSE_SERVER_URL` is set, spawns
+    /// the sync worker thread.
     #[must_use]
     pub fn new() -> Self {
         let bounds = WorldRect::from_min_max(
@@ -82,6 +100,8 @@ impl BseApp {
             }
         }
         let elements = crdt.element_count();
+        let local_peer_id = PeerId::new();
+        let sync = spawn_sync_if_configured(local_peer_id);
         Self {
             canvas: CanvasState::new(),
             crdt,
@@ -94,6 +114,11 @@ impl BseApp {
             last_frame: None,
             last_visible_count: 0,
             last_element_count: elements,
+            sync,
+            connection_state: ConnectionState::Offline,
+            peers: PeerStore::new(),
+            local_peer_id,
+            last_emitted_cursor: None,
         }
     }
 
@@ -173,14 +198,12 @@ impl BseApp {
 
     fn force_save(&mut self) {
         self.dirty = true;
-        // Stale-out `last_save` so the autosave guard always fires here.
         self.last_save = Instant::now()
             .checked_sub(AUTOSAVE_INTERVAL)
             .unwrap_or_else(Instant::now);
         self.autosave_if_due();
     }
 
-    /// React to Ctrl+S (save as) and Ctrl+O (open) keyboard shortcuts.
     fn handle_file_shortcuts(&mut self, ctx: &egui::Context) {
         let (save, open) = ctx.input(|i| {
             let cmd = i.modifiers.command;
@@ -192,12 +215,84 @@ impl BseApp {
         if save {
             project_io::save_as_dialog(&self.crdt, "untitled");
         } else if open && project_io::open_dialog(&mut self.crdt).is_some() {
-            // Reset transient UI state and force one autosave so the
-            // local cache reflects the freshly-loaded document.
             self.canvas.tool_state = bse_canvas::ToolState::Idle;
             self.force_save();
         }
     }
+
+    /// Pull events from the sync worker and update peer state.
+    fn process_sync_events(&mut self) {
+        let Some(sync) = self.sync.as_mut() else {
+            return;
+        };
+        for event in sync.drain_events() {
+            match event {
+                SyncEvent::State(state) => {
+                    self.connection_state = state;
+                    if matches!(state, ConnectionState::Offline) {
+                        self.peers.clear();
+                    }
+                }
+                SyncEvent::PeerJoin {
+                    peer_id,
+                    display_name,
+                    color,
+                } => self.peers.on_join(peer_id, display_name, color),
+                SyncEvent::PeerLeave(id) => self.peers.on_leave(id),
+                SyncEvent::PeerCursor { peer_id, position } => {
+                    if peer_id != self.local_peer_id {
+                        self.peers.on_cursor(peer_id, position);
+                    }
+                }
+            }
+        }
+        self.peers.prune_stale();
+    }
+
+    /// Read the local cursor screen position and forward it to the
+    /// worker thread so it is broadcast as awareness.
+    fn emit_local_cursor(&mut self, ctx: &egui::Context, canvas_rect: egui::Rect) {
+        let Some(sync) = self.sync.as_ref() else {
+            return;
+        };
+        if !matches!(self.connection_state, ConnectionState::Connected) {
+            return;
+        }
+        let Some(pos_screen) = ctx.input(|i| i.pointer.hover_pos()) else {
+            return;
+        };
+        if !canvas_rect.contains(pos_screen) {
+            return;
+        }
+        let viewport = WorldVec2::new(canvas_rect.width(), canvas_rect.height());
+        let local = pos_screen - canvas_rect.min.to_vec2();
+        let screen = WorldVec2::new(local.x, local.y);
+        let world = self.canvas.camera.screen_to_world(viewport, screen);
+        if self.last_emitted_cursor != Some(world) {
+            sync.send(SyncCmd::Cursor(world));
+            self.last_emitted_cursor = Some(world);
+        }
+    }
+}
+
+fn spawn_sync_if_configured(local_peer_id: PeerId) -> Option<SyncHandle> {
+    let url = std::env::var("BSE_SERVER_URL").ok()?;
+    let room = std::env::var("BSE_ROOM").unwrap_or_else(|_| DEFAULT_ROOM.to_string());
+    let display_name = std::env::var("BSE_DISPLAY_NAME").unwrap_or_else(|_| whoami_or_anonymous());
+    let handle = SyncHandle::spawn();
+    handle.send(SyncCmd::Connect(ClientConfig {
+        server_url: url,
+        room_id: room,
+        peer_id: local_peer_id,
+        display_name,
+    }));
+    Some(handle)
+}
+
+fn whoami_or_anonymous() -> String {
+    std::env::var("USERNAME")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "anonymous".to_string())
 }
 
 fn open_default_storage() -> Option<SqliteStorage> {
@@ -223,6 +318,7 @@ fn open_default_storage() -> Option<SqliteStorage> {
 impl eframe::App for BseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
+        self.process_sync_events();
         self.handle_file_shortcuts(ctx);
         self.handle_dropped_files(ctx);
         self.rebuild_spatial();
@@ -238,7 +334,7 @@ impl eframe::App for BseApp {
                     app: APP_INFO,
                     zoom: self.canvas.camera.zoom,
                     fps: self.fps,
-                    peer_count: 0,
+                    peer_count: u32::try_from(self.peers.len()).unwrap_or(u32::MAX),
                     tool: self.canvas.tool,
                     element_count: u32::try_from(self.crdt.element_count()).unwrap_or(u32::MAX),
                     visible_count: self.last_visible_count,
@@ -246,6 +342,7 @@ impl eframe::App for BseApp {
             );
         });
 
+        let mut canvas_rect = egui::Rect::NOTHING;
         egui::CentralPanel::default().show(ctx, |ui| {
             self.last_visible_count = canvas::show(
                 ui,
@@ -253,8 +350,12 @@ impl eframe::App for BseApp {
                 &mut self.crdt,
                 &self.spatial,
                 &mut self.assets,
+                &self.peers,
             );
+            canvas_rect = ui.min_rect();
         });
+
+        self.emit_local_cursor(ctx, canvas_rect);
 
         let current = self.crdt.element_count();
         if current != self.last_element_count {

@@ -67,6 +67,44 @@ pub fn tool_preview(
     }
 }
 
+/// Paint every remote peer's cursor in world space.
+pub fn remote_cursors(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: &Camera,
+    viewport: WorldVec2,
+    peers: &crate::peers::PeerStore,
+) {
+    for (_, peer) in peers.with_cursors() {
+        let Some(world) = peer.last_cursor else {
+            continue;
+        };
+        let pos = world_to_screen(camera, viewport, rect, world);
+        if !rect.expand(40.0).contains(pos) {
+            continue;
+        }
+        let color = to_color32(peer.color, 1.0);
+        let p0 = pos;
+        let p1 = Pos2::new(pos.x, pos.y + 14.0);
+        let p2 = Pos2::new(pos.x + 10.0, pos.y + 10.0);
+        painter.add(egui::Shape::convex_polygon(
+            vec![p0, p1, p2],
+            color,
+            Stroke::new(1.0, Color32::WHITE),
+        ));
+        if let Some(name) = peer.display_name.as_deref() {
+            let label_pos = Pos2::new(pos.x + 12.0, pos.y + 12.0);
+            painter.text(
+                label_pos,
+                egui::Align2::LEFT_TOP,
+                name,
+                egui::FontId::proportional(11.0),
+                color,
+            );
+        }
+    }
+}
+
 /// Build a final shape `Element` from a finished drag. Returns `None`
 /// for degenerate drags (less than 1 unit on either axis).
 #[must_use]

@@ -10,7 +10,9 @@
 mod app;
 mod assets;
 mod canvas;
+mod peers;
 mod project_io;
+mod sync_thread;
 mod tracing_setup;
 
 pub use assets::{Asset, AssetError, AssetStore};
@@ -25,7 +27,7 @@ use crate::app::BseApp;
 pub const APP_INFO: AppInfo = AppInfo {
     name: "BSE",
     version: env!("CARGO_PKG_VERSION"),
-    milestone: "v015.1",
+    milestone: "v010.1",
 };
 
 /// Start the event loop and run BSE until the user closes the window.

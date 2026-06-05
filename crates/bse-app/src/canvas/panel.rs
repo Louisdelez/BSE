@@ -8,6 +8,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
 use crate::assets::AssetStore;
 use crate::canvas::{draw, grid, input, text_edit};
+use crate::peers::PeerStore;
 
 /// Render the central canvas region. Returns the number of elements
 /// that were drawn (after viewport culling).
@@ -17,6 +18,7 @@ pub fn show(
     crdt: &mut YrsBackend,
     spatial: &Quadtree<ElementId>,
     assets: &mut AssetStore,
+    peers: &PeerStore,
 ) -> u32 {
     let available = ui.available_size_before_wrap();
     let (response, painter) = ui.allocate_painter(available, Sense::click_and_drag());
@@ -39,6 +41,7 @@ pub fn show(
         ui.ctx(),
     );
     draw::tool_preview(&painter, rect, &canvas.camera, viewport, canvas);
+    draw::remote_cursors(&painter, rect, &canvas.camera, viewport, peers);
     text_edit::show_overlay(ui.ctx(), rect, canvas, crdt);
 
     visible

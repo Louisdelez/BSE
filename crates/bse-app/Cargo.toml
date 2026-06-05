@@ -22,11 +22,14 @@ bse-crdt.workspace = true
 bse-model.workspace = true
 bse-pen.workspace = true
 bse-projects.workspace = true
+bse-protocol.workspace = true
 bse-render.workspace = true
 bse-spatial.workspace = true
 bse-storage.workspace = true
+bse-sync.workspace = true
 bse-types.workspace = true
 bse-ui.workspace = true
+tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
 eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 directories = "5"
