@@ -52,15 +52,28 @@ fn handle_text_click(
     response: &Response,
     rect: Rect,
     viewport: WorldVec2,
-    canvas: &CanvasState,
+    canvas: &mut CanvasState,
     crdt: &mut YrsBackend,
 ) {
-    if response.clicked_by(PointerButton::Primary)
-        && let Some(world) = cursor_world(ctx, rect, viewport, canvas)
-        && let Err(err) = crdt.upsert_element(draw::commit_text(world))
-    {
-        warn!(target: "bse::canvas", error = %err, "text upsert failed");
+    if !response.clicked_by(PointerButton::Primary) {
+        return;
     }
+    let Some(world) = cursor_world(ctx, rect, viewport, canvas) else {
+        return;
+    };
+    let element = draw::commit_text(world);
+    let id = element.id;
+    if let Err(err) = crdt.upsert_element(element) {
+        warn!(target: "bse::canvas", error = %err, "text upsert failed");
+        return;
+    }
+    // Immediately enter inline edit mode so the user can type without an
+    // extra click.
+    canvas.tool_state = ToolState::EditingText {
+        element_id: id,
+        anchor_world: world,
+        buffer: String::new(),
+    };
 }
 
 fn handle_pan(response: &Response, canvas: &mut CanvasState, space_held: bool) {

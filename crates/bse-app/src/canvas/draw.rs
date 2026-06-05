@@ -52,7 +52,7 @@ pub fn tool_preview(
     canvas: &CanvasState,
 ) {
     match &canvas.tool_state {
-        ToolState::Idle => {}
+        ToolState::Idle | ToolState::EditingText { .. } => {}
         ToolState::DrawingShape {
             anchor_world,
             current_world,

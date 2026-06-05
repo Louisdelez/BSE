@@ -56,4 +56,14 @@ pub enum ToolState {
         /// Stroke samples so far, in world space.
         points: Vec<InputPoint>,
     },
+    /// User is editing the textual content of a `Text` element inline.
+    EditingText {
+        /// Identifier of the element being edited.
+        element_id: bse_types::ElementId,
+        /// Anchor position (world center of the element) for positioning
+        /// the inline overlay.
+        anchor_world: Vec2,
+        /// Current edit buffer.
+        buffer: String,
+    },
 }
