@@ -409,6 +409,7 @@ dependencies = [
  "bse-ui",
  "directories",
  "eframe",
+ "egui-notify",
  "image",
  "reqwest",
  "rfd",
@@ -1051,6 +1052,15 @@ dependencies = [
  "profiling",
  "ron",
  "serde",
+]
+
+[[package]]
+name = "egui-notify"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4bc3995feb2e3f2ab66c9ccbf0e6df8df7c00c612bd8ac5af16b6c8db44146c"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

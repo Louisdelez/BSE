@@ -9,6 +9,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use bse_auth::SessionState;
+use egui_notify::Toasts;
 use bse_canvas::CanvasState;
 use bse_crdt::{CrdtBackend, YrsBackend};
 use bse_spatial::Quadtree;
@@ -90,6 +91,11 @@ pub struct BseApp {
     /// needs an `egui::Context`, which we only get inside `update`, so
     /// it's deferred to the first frame.
     theme_applied: bool,
+    /// Toast notification queue (success / info / warning / error).
+    toasts: Toasts,
+    /// Previous connection state — used to detect transitions and
+    /// fire the matching toast exactly once.
+    last_connection_state: ConnectionState,
 }
 
 impl Default for BseApp {
@@ -173,6 +179,8 @@ impl BseApp {
             show_picker: false,
             last_broadcast_sv: Vec::new(),
             theme_applied: false,
+            toasts: Toasts::default(),
+            last_connection_state: ConnectionState::Offline,
         }
     }
 
@@ -421,6 +429,9 @@ impl BseApp {
         }
         self.peers.clear();
         self.room_picker.reset();
+        self.toasts
+            .info("Signed out.")
+            .duration(Some(Duration::from_secs(2)));
         // Keep `current_room` so that on re-login the user lands back
         // in the same room without having to pick again, but only if
         // it was originally provided via the env var.
@@ -428,6 +439,34 @@ impl BseApp {
             self.current_room = None;
         }
         info!(target: "bse::auth", "signed out");
+    }
+
+    /// Detect transitions in `connection_state` and fire matching
+    /// toasts. Should be called once per frame, after
+    /// `process_sync_events` has updated `self.connection_state`.
+    fn observe_connection_transitions(&mut self) {
+        if self.connection_state == self.last_connection_state {
+            return;
+        }
+        match (self.last_connection_state, self.connection_state) {
+            (_, ConnectionState::Connected) => {
+                self.toasts
+                    .success("Connected to the room.")
+                    .duration(Some(Duration::from_secs(2)));
+            }
+            (ConnectionState::Connected, ConnectionState::Reconnecting) => {
+                self.toasts
+                    .warning("Lost connection — trying to reconnect.")
+                    .duration(Some(Duration::from_secs(4)));
+            }
+            (ConnectionState::Connecting, ConnectionState::Offline) => {
+                self.toasts
+                    .error("Could not reach the server.")
+                    .duration(Some(Duration::from_secs(5)));
+            }
+            _ => {}
+        }
+        self.last_connection_state = self.connection_state;
     }
 
     /// Make sure a sync worker exists and is connected to `self.current_room`.
@@ -627,6 +666,7 @@ impl eframe::App for BseApp {
         }
         self.update_fps();
         self.process_sync_events();
+        self.observe_connection_transitions();
         self.poll_refresh();
         self.maybe_refresh_token();
         self.maybe_show_login(ctx);
@@ -698,6 +738,9 @@ impl eframe::App for BseApp {
         });
 
         self.emit_local_cursor(ctx, canvas_rect);
+
+        // Render queued toasts above everything else.
+        self.toasts.show(ctx);
 
         let current = self.crdt.element_count();
         if current != self.last_element_count {
