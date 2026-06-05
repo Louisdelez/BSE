@@ -21,6 +21,7 @@ bse-canvas.workspace = true
 bse-model.workspace = true
 bse-pen.workspace = true
 bse-render.workspace = true
+bse-spatial.workspace = true
 bse-types.workspace = true
 bse-ui.workspace = true
 eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence"] }

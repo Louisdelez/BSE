@@ -8,20 +8,35 @@ use bse_model::{
     element::StrokePoint,
 };
 use bse_pen::{InputPoint, StrokeOptions, get_stroke};
+use bse_spatial::Quadtree;
 use bse_types::{Color, ElementId, PeerId, Rect as WorldRect, Transform, Vec2 as WorldVec2};
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Stroke};
 
-/// Render every element of `scene` in z-order.
+/// Render every element of `scene` that intersects the camera viewport,
+/// in z-order. Returns the count of elements actually drawn.
+///
+/// `spatial` is used for viewport culling : without it, large scenes
+/// (~10 000 elements) would force every element through the renderer
+/// every frame.
 pub fn elements(
     painter: &egui::Painter,
     rect: Rect,
     camera: &Camera,
     viewport: WorldVec2,
     scene: &Scene,
-) {
-    for element in scene.iter_z_sorted() {
+    spatial: &Quadtree<ElementId>,
+) -> u32 {
+    let world_viewport = camera.viewport_world_rect(viewport);
+    let visible_ids = spatial.query(world_viewport);
+    let mut visible: Vec<&Element> = visible_ids
+        .into_iter()
+        .filter_map(|id| scene.get(id))
+        .collect();
+    visible.sort_by(|a, b| a.z.cmp(&b.z).then(a.id.as_uuid().cmp(&b.id.as_uuid())));
+    for element in &visible {
         paint_element(painter, rect, camera, viewport, element);
     }
+    u32::try_from(visible.len()).unwrap_or(u32::MAX)
 }
 
 /// Render the in-progress tool preview, if any.

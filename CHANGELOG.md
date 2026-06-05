@@ -8,15 +8,59 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v007` :
-- Quadtree spatial index — code prêt (agent), intégration prochaine
-- Viewport culling intégré
-- Crate `bse-spatial` ajouté au workspace
-
-À venir dans `v008` / `v009` / `v011` (code prêt, intégrations séparées) :
+À venir dans `v008` / `v009` / `v011` (code prêt par agents, commits séparés) :
 - `bse-server` : axum + WebSocket route + handlers (v008)
 - `bse-crdt::YrsBackend` (v009)
 - `bse-storage::SqliteStorage` (v011)
+
+---
+
+## [v007] — 2026-06-05
+
+### 🌳 Quadtree spatial index + viewport culling
+
+Le moteur ne dessine plus que les éléments visibles dans le viewport.
+Sur une scène de 10 000 éléments avec 100 visibles, on passe d'O(N) à
+O(log N + K). Le compteur `Elements : N (M visible)` dans la status bar
+reflète l'efficacité du culling en temps réel.
+
+### 🎉 Added
+
+**Nouveau crate `bse-spatial`** (porté par agent en parallèle)
+- `Quadtree<V>` générique avec API claire : `new` / `insert` / `remove` /
+  `query` / `len` / `is_empty` / `clear` / `bounds`.
+- Stratégie "straddler" : un bbox qui chevauche plusieurs quadrants reste
+  dans le parent (pas de duplication, query dédup naturellement).
+- 3 modules ≤ 253 lignes : `lib.rs` (48), `tree.rs` (119), `node.rs` (253).
+- **8 tests unitaires** + **3 tests property-based** (proptest) +
+  **1 doctest** : tous verts.
+
+**`bse-app`**
+- `BseApp.spatial: Quadtree<ElementId>` (bounds `±1_000_000`, 16 items/leaf,
+  depth 10).
+- `rebuild_spatial()` appelée à chaque frame : reconstruit l'index depuis
+  la scène (rebuild incrémental en v007.1).
+- `canvas::show()` reçoit `&Quadtree` et retourne le nombre d'éléments
+  rendus (utilisé par la status bar).
+- `canvas/draw.rs::elements()` : utilise `spatial.query(world_viewport)`
+  pour filtrer avant tri Z et rendu.
+
+**`bse-ui`**
+- `StatusInfo.visible_count` ajouté.
+- Affichage : `Elements : N (M visible)` dans la status bar.
+
+### 🛠 Qualité
+- `cargo clippy --workspace --all-targets -- -D warnings` ✅ pedantic
+- `cargo fmt --all -- --check` ✅
+- `cargo test --workspace` : **85 tests verts**
+- Tous les fichiers < 300 lignes
+
+### 📌 Voir le culling en action
+```bash
+cargo run --release -p bse-app
+# Crée 20 rectangles. Zoom et pan : observe "20 (X visible)" varier.
+# Au zoom extrême, X tombe à 0 quand on est hors viewport.
+```
 
 ---
 

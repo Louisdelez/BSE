@@ -2,13 +2,20 @@
 
 use bse_canvas::CanvasState;
 use bse_model::Scene;
-use bse_types::Vec2 as WorldVec2;
+use bse_spatial::Quadtree;
+use bse_types::{ElementId, Vec2 as WorldVec2};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
 use crate::canvas::{draw, grid, input};
 
-/// Render the central canvas region. Returns the screen rectangle it occupies.
-pub fn show(ui: &mut egui::Ui, canvas: &mut CanvasState, scene: &mut Scene) -> Rect {
+/// Render the central canvas region. Returns the number of elements
+/// that were drawn (after viewport culling).
+pub fn show(
+    ui: &mut egui::Ui,
+    canvas: &mut CanvasState,
+    scene: &mut Scene,
+    spatial: &Quadtree<ElementId>,
+) -> u32 {
     let available = ui.available_size_before_wrap();
     let (response, painter) = ui.allocate_painter(available, Sense::click_and_drag());
     let rect = response.rect;
@@ -19,10 +26,10 @@ pub fn show(ui: &mut egui::Ui, canvas: &mut CanvasState, scene: &mut Scene) -> R
     paint_background(&painter, rect);
     grid::paint(&painter, rect, &canvas.camera, viewport);
     paint_origin_marker(&painter, rect, canvas, viewport);
-    draw::elements(&painter, rect, &canvas.camera, viewport, scene);
+    let visible = draw::elements(&painter, rect, &canvas.camera, viewport, scene, spatial);
     draw::tool_preview(&painter, rect, &canvas.camera, viewport, canvas);
 
-    rect
+    visible
 }
 
 fn paint_background(painter: &egui::Painter, rect: Rect) {

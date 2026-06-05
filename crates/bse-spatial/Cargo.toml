@@ -1,0 +1,22 @@
+[package]
+name = "bse-spatial"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Spatial index (Quadtree) for BSE viewport culling and hit-testing."
+
+[dependencies]
+bse-types.workspace = true
+
+[dev-dependencies]
+proptest = "1"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

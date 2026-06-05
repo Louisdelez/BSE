@@ -20,6 +20,9 @@ pub struct StatusInfo {
     pub tool: ToolKind,
     /// Number of elements currently in the scene.
     pub element_count: u32,
+    /// Number of elements that were actually drawn last frame
+    /// (after viewport culling). Always `≤ element_count`.
+    pub visible_count: u32,
 }
 
 /// Render the bottom status bar.
@@ -34,7 +37,10 @@ pub fn status_bar(ui: &mut egui::Ui, info: StatusInfo) {
         ui.separator();
         ui.label(format!("Zoom : {:>4.0} %", info.zoom * 100.0));
         ui.separator();
-        ui.label(format!("Elements : {}", info.element_count));
+        ui.label(format!(
+            "Elements : {} ({} visible)",
+            info.element_count, info.visible_count
+        ));
         ui.separator();
         ui.label(format!("FPS : {:>3.0}", info.fps));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
