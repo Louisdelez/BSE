@@ -14,6 +14,7 @@
 use bse_auth::SessionState;
 use bse_storage::{LocalStorage, SqliteStorage};
 use bse_types::UserId;
+use bse_ui::{Modal, PillButton, theme::colors, theme::typography};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -155,108 +156,170 @@ pub fn show_modal(
     form: &mut LoginForm,
     server_url: &str,
 ) -> Option<SessionState> {
-    let mut result = None;
     let title = match form.mode {
         LoginMode::SignIn => "Sign in to BSE",
         LoginMode::SignUp => "Create your BSE account",
     };
-    egui::Window::new(title)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, -20.0])
-        .show(ctx, |ui| {
-            ui.set_min_width(340.0);
-            ui.add_space(4.0);
-            ui.label(match form.mode {
-                LoginMode::SignIn => "Connect to your BSE server.",
-                LoginMode::SignUp => "Choose your credentials and start collaborating.",
-            });
-            ui.add_space(8.0);
 
-            ui.label("Email");
-            ui.add_enabled(
-                !form.busy,
-                egui::TextEdit::singleline(&mut form.email).desired_width(f32::INFINITY),
+    Modal::new("login")
+        .title(title)
+        .min_width(380.0)
+        .max_width(420.0)
+        .show(ctx, |ui| render_form(ui, form, server_url))
+        .inner
+}
+
+#[allow(clippy::too_many_lines)]
+fn render_form(
+    ui: &mut egui::Ui,
+    form: &mut LoginForm,
+    server_url: &str,
+) -> Option<SessionState> {
+    let mut result = None;
+
+    ui.add_space(2.0);
+    ui.label(
+        egui::RichText::new(match form.mode {
+            LoginMode::SignIn => "Welcome back. Sign in to your BSE server.",
+            LoginMode::SignUp => "Choose your credentials and start collaborating.",
+        })
+        .color(colors::SLATE)
+        .font(typography::size::body_md()),
+    );
+    ui.add_space(16.0);
+
+    field_label(ui, "Email");
+    ui.add_enabled(
+        !form.busy,
+        egui::TextEdit::singleline(&mut form.email)
+            .desired_width(f32::INFINITY)
+            .margin(egui::vec2(12.0, 10.0))
+            .font(typography::size::body_md()),
+    );
+
+    if matches!(form.mode, LoginMode::SignUp) {
+        ui.add_space(12.0);
+        field_label(ui, "Display name");
+        ui.add_enabled(
+            !form.busy,
+            egui::TextEdit::singleline(&mut form.display_name)
+                .desired_width(f32::INFINITY)
+                .margin(egui::vec2(12.0, 10.0))
+                .font(typography::size::body_md()),
+        );
+    }
+
+    ui.add_space(12.0);
+    field_label(ui, "Password");
+    ui.add_enabled(
+        !form.busy,
+        egui::TextEdit::singleline(&mut form.password)
+            .password(true)
+            .desired_width(f32::INFINITY)
+            .margin(egui::vec2(12.0, 10.0))
+            .font(typography::size::body_md()),
+    );
+
+    if !form.error.is_empty() {
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(&form.error)
+                .color(colors::ERROR_TEXT)
+                .font(typography::size::body_sm()),
+        );
+    }
+
+    ui.add_space(20.0);
+
+    let submit_text = match form.mode {
+        LoginMode::SignIn => "Sign in",
+        LoginMode::SignUp => "Create account",
+    };
+    let submit = ui
+        .add(
+            PillButton::primary(submit_text)
+                .enabled(!form.busy)
+                .min_size(egui::vec2(0.0, 44.0))
+                .id_source("login_submit"),
+        )
+        .clicked()
+        || (!form.busy && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+
+    if submit {
+        form.error.clear();
+        let res = match form.mode {
+            LoginMode::SignIn => try_login(server_url, &form.email, &form.password),
+            LoginMode::SignUp => {
+                try_register(server_url, &form.email, &form.display_name, &form.password)
+            }
+        };
+        match res {
+            Ok(state) => {
+                form.password.clear();
+                form.display_name.clear();
+                result = Some(state);
+            }
+            Err(msg) => form.error = msg,
+        }
+    }
+
+    if form.busy {
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(
+                egui::RichText::new("Talking to the server…")
+                    .color(colors::STEEL)
+                    .font(typography::size::body_sm()),
             );
-
-            if matches!(form.mode, LoginMode::SignUp) {
-                ui.label("Display name");
-                ui.add_enabled(
-                    !form.busy,
-                    egui::TextEdit::singleline(&mut form.display_name)
-                        .desired_width(f32::INFINITY),
-                );
-            }
-
-            ui.label("Password");
-            ui.add_enabled(
-                !form.busy,
-                egui::TextEdit::singleline(&mut form.password)
-                    .password(true)
-                    .desired_width(f32::INFINITY),
-            );
-
-            if !form.error.is_empty() {
-                ui.add_space(4.0);
-                ui.colored_label(egui::Color32::from_rgb(0xE6, 0x3A, 0x46), &form.error);
-            }
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let label = match form.mode {
-                    LoginMode::SignIn => "Sign in",
-                    LoginMode::SignUp => "Create account",
-                };
-                let submit = ui
-                    .add_enabled(!form.busy, egui::Button::new(label))
-                    .clicked()
-                    || (!form.busy && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                if submit {
-                    form.error.clear();
-                    let res = match form.mode {
-                        LoginMode::SignIn => try_login(server_url, &form.email, &form.password),
-                        LoginMode::SignUp => try_register(
-                            server_url,
-                            &form.email,
-                            &form.display_name,
-                            &form.password,
-                        ),
-                    };
-                    match res {
-                        Ok(state) => {
-                            form.password.clear();
-                            form.display_name.clear();
-                            result = Some(state);
-                        }
-                        Err(msg) => form.error = msg,
-                    }
-                }
-                if form.busy {
-                    ui.spinner();
-                }
-            });
-
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let toggle_label = match form.mode {
-                    LoginMode::SignIn => "Need an account ? Sign up",
-                    LoginMode::SignUp => "Have an account ? Sign in",
-                };
-                if ui.small_button(toggle_label).clicked() {
-                    form.mode = match form.mode {
-                        LoginMode::SignIn => LoginMode::SignUp,
-                        LoginMode::SignUp => LoginMode::SignIn,
-                    };
-                    form.error.clear();
-                }
-            });
-            if matches!(form.mode, LoginMode::SignIn) {
-                ui.small("Demo : demo@bse.app / demo1234");
-            } else {
-                ui.small("Password must be at least 8 characters.");
-            }
         });
+    }
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+
+    let toggle_label = match form.mode {
+        LoginMode::SignIn => "Need an account ? Sign up",
+        LoginMode::SignUp => "Have an account ? Sign in",
+    };
+    if ui
+        .add(
+            PillButton::ghost(toggle_label)
+                .min_size(egui::vec2(0.0, 36.0))
+                .id_source("login_toggle"),
+        )
+        .clicked()
+    {
+        form.mode = match form.mode {
+            LoginMode::SignIn => LoginMode::SignUp,
+            LoginMode::SignUp => LoginMode::SignIn,
+        };
+        form.error.clear();
+    }
+
+    ui.add_space(4.0);
+    let helper = match form.mode {
+        LoginMode::SignIn => "Demo : demo@bse.app / demo1234",
+        LoginMode::SignUp => "Password must be at least 8 characters.",
+    };
+    ui.label(
+        egui::RichText::new(helper)
+            .color(colors::STEEL)
+            .font(typography::size::caption()),
+    );
+
     result
+}
+
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .color(colors::SLATE)
+            .font(typography::size::body_sm())
+            .strong(),
+    );
+    ui.add_space(4.0);
 }
 
 fn try_login(server_url: &str, email: &str, password: &str) -> Result<SessionState, String> {
