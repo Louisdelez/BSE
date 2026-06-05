@@ -31,7 +31,7 @@ bse-sync.workspace = true
 bse-types.workspace = true
 bse-ui.workspace = true
 tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
-eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence"] }
+eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence", "wayland", "x11"] }
 egui-notify = "0.18"
 egui-phosphor = "0.8"
 earcutr = "0.4"

@@ -12,7 +12,7 @@ description = "Reusable egui-based UI components for the BSE app."
 bse-canvas.workspace = true
 bse-model.workspace = true
 bse-types.workspace = true
-eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts"] }
+eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 egui-phosphor = "0.8"
 egui_extras = { version = "0.30", features = ["all_loaders", "svg"] }
 notify = { version = "6", optional = true }
