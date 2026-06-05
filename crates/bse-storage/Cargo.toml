@@ -11,6 +11,7 @@ description = "Local persistence for BSE (SQLite + filesystem)."
 [dependencies]
 bse-model.workspace = true
 bse-types.workspace = true
+rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror.workspace = true
 tracing.workspace = true
 

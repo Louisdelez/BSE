@@ -1,13 +1,18 @@
 //! Local persistence for BSE.
 //!
 //! Stores project snapshots in `SQLite` and asset binaries on the filesystem.
-//! The real implementation lands in v011 (post-MVP demo) ; v002 only
-//! defines the trait.
+//! v011 introduces the [`SqliteStorage`] implementation of the
+//! [`LocalStorage`] trait, backed by `rusqlite` with the `bundled` feature
+//! so no system `SQLite` is required.
 
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
 use thiserror::Error;
+
+mod sqlite;
+
+pub use sqlite::SqliteStorage;
 
 /// Errors produced by storage operations.
 #[derive(Debug, Error)]
@@ -16,9 +21,25 @@ pub enum StorageError {
     #[error("I/O error : {0}")]
     Io(String),
 
+    /// The underlying database operation failed.
+    #[error("database error : {0}")]
+    Database(String),
+
     /// Feature not yet implemented at this milestone.
     #[error("not yet implemented : {0}")]
     NotImplemented(&'static str),
+}
+
+impl From<std::io::Error> for StorageError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err.to_string())
+    }
+}
+
+impl From<rusqlite::Error> for StorageError {
+    fn from(err: rusqlite::Error) -> Self {
+        Self::Database(err.to_string())
+    }
 }
 
 /// Local storage trait.

@@ -8,8 +8,49 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), et le p
 
 ## [Unreleased]
 
-À venir dans `v011` :
-- `bse-storage::SqliteStorage` — code prêt par agent
+À venir dans `v010` :
+- Awareness (curseurs distants) — dépend de v009
+
+À venir dans `v012` :
+- Polish + démo MVP fermé
+
+---
+
+## [v011] — 2026-06-05
+
+### 💾 Persistance locale — `SqliteStorage`
+
+Implémentation `rusqlite` du trait `LocalStorage`. Stockage de snapshots
+de projet en SQLite WAL-mode, avec bundled feature (aucune installation
+système requise).
+
+### 🎉 Added (par agent en parallèle)
+
+**`bse-storage`**
+- Nouveau module `sqlite.rs` (247 lignes) avec `SqliteStorage`.
+- Schéma auto-créé : `snapshots(key TEXT PRIMARY KEY, bytes BLOB,
+  updated_at INTEGER)`.
+- `SqliteStorage::open(path)` : crée le parent dir, ouvre la DB,
+  passe en WAL mode, active `synchronous=NORMAL` et `foreign_keys=ON`.
+- `SqliteStorage::in_memory()` : DB en mémoire pour tests.
+- Upsert via `INSERT ... ON CONFLICT(key) DO UPDATE`.
+- `Connection` wrappée en `Mutex` (rusqlite::Connection est Send mais
+  pas Sync — requis par `LocalStorage: Send + Sync`).
+- Variante `StorageError::Database(String)` ajoutée (backward-compatible
+  avec `Io` et `NotImplemented`).
+
+### ✅ Tests (8, tous verts)
+- save/load roundtrip
+- save twice overwrites single row
+- load missing key returns None
+- large blob (1 MB) roundtrip
+- file-based persists across reopen
+- WAL pragma verified
+- open creates parent directory
+- impls Send + Sync (static assertion)
+
+### 🛠 Dépendances
+- `rusqlite = "0.32"` avec feature `bundled` (no system SQLite needed)
 
 ---
 

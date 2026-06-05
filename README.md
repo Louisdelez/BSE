@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Status: Scaffolding](https://img.shields.io/badge/Status-Scaffolding-blue.svg)](./docs)
-[![Version: v009](https://img.shields.io/badge/Version-v009-green.svg)](./CHANGELOG.md)
+[![Version: v011](https://img.shields.io/badge/Version-v011-green.svg)](./CHANGELOG.md)
 [![CI](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml/badge.svg)](https://github.com/Louisdelez/BSE/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/lang-Rust-orange.svg)](https://www.rust-lang.org)
 
@@ -28,9 +28,9 @@ BSE permet à plusieurs personnes de **brainstormer ensemble en temps réel** su
 
 ## 📦 État du projet
 
-> **v009 — CRDT temps réel via yrs (Y-CRDT).**
-> Deux peers peuvent converger sur des éditions concurrentes via `YrsBackend::apply_remote_update`.
-> SQLite local storage (v011) prêt, commit suivant.
+> **v011 — Persistance locale SQLite (`SqliteStorage`).**
+> Snapshots persistés en SQLite WAL-mode, bundled (no system SQLite).
+> Awareness (v010) et polish (v012) à venir en sessions futures.
 
 Voir la [roadmap complète](./docs/00-VUE-ENSEMBLE/04-roadmap.md) et le [CHANGELOG](./CHANGELOG.md).
 
