@@ -13,7 +13,10 @@ mod status_bar;
 pub mod theme;
 mod toolbar;
 
-pub use components::{Card, CardVariant, Modal, ModalResponse, PillButton, PillVariant, card_button, show_modal};
+pub use components::{
+    Card, CardVariant, Modal, ModalResponse, PillButton, PillTone, PillVariant, StatusPill,
+    avatar, avatar_stack, card_button, show_modal,
+};
 pub use info::AppInfo;
 pub use status_bar::{ConnectionStatus, StatusInfo, status_bar};
 pub use theme::{ThemeMode, apply_bse_theme};

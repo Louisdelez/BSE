@@ -651,10 +651,23 @@ impl eframe::App for BseApp {
             ConnectionState::Connected => ConnectionStatus::Connected,
             ConnectionState::Reconnecting => ConnectionStatus::Reconnecting,
         };
+        let peer_avatars: Vec<(String, egui::Color32)> = self
+            .peers
+            .iter()
+            .map(|(_, p)| {
+                let name = p
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| "Anon".to_string());
+                let c = egui::Color32::from_rgb(p.color.r, p.color.g, p.color.b);
+                (name, c)
+            })
+            .collect();
+        let show_debug = std::env::var("BSE_DEBUG").is_ok();
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             status_bar(
                 ui,
-                StatusInfo {
+                &StatusInfo {
                     app: APP_INFO,
                     zoom: self.canvas.camera.zoom,
                     fps: self.fps,
@@ -663,6 +676,8 @@ impl eframe::App for BseApp {
                     tool: self.canvas.tool,
                     element_count: u32::try_from(self.crdt.element_count()).unwrap_or(u32::MAX),
                     visible_count: self.last_visible_count,
+                    peers: &peer_avatars,
+                    show_debug,
                 },
             );
         });

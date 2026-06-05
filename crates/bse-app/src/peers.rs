@@ -110,6 +110,11 @@ impl PeerStore {
         self.peers.iter().filter(|(_, p)| p.last_cursor.is_some())
     }
 
+    /// Iterate over every known peer (with or without a cursor).
+    pub fn iter(&self) -> impl Iterator<Item = (&PeerId, &RemotePeer)> {
+        self.peers.iter()
+    }
+
     /// Drop every peer (e.g. on disconnect).
     pub fn clear(&mut self) {
         self.peers.clear();
