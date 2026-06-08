@@ -14,7 +14,7 @@ bse-model.workspace = true
 bse-types.workspace = true
 eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 egui-phosphor = "0.8"
-egui_extras = { version = "0.30", features = ["all_loaders", "svg"] }
+egui_extras = { version = "0.34", features = ["all_loaders", "svg"] }
 notify = { version = "6", optional = true }
 ron = { version = "0.8", optional = true }
 serde = { workspace = true, optional = true }
