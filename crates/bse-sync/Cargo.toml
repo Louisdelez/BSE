@@ -16,7 +16,7 @@ rmp-serde = "1"
 serde.workspace = true
 thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = "0.29"
 tracing.workspace = true
 url = "2"
 
