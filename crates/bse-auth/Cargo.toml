@@ -17,7 +17,7 @@ jsonwebtoken = "9"
 # `password-hash` is re-exported through `argon2::password_hash`, but
 # `OsRng` is gated behind its `getrandom` feature. Listed as a direct
 # dependency just to enable that feature flag.
-password-hash = { version = "0.5", features = ["getrandom"] }
+password-hash = { version = "0.6", features = ["getrandom"] }
 
 [dev-dependencies]
 uuid.workspace = true
