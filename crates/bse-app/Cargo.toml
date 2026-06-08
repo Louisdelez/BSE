@@ -32,7 +32,7 @@ bse-types.workspace = true
 bse-ui.workspace = true
 tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
 eframe = { version = "0.30", default-features = false, features = ["wgpu", "default_fonts", "persistence", "wayland", "x11"] }
-egui-notify = "0.18"
+egui-notify = "0.22"
 egui-phosphor = "0.8"
 earcutr = "0.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
