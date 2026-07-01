@@ -66,7 +66,7 @@ jobs:
           if (Test-Path "LICENSE") { Copy-Item "LICENSE" stage/ }
           Compress-Archive -Path stage/* -DestinationPath "bse-${{ github.ref_name }}-${{ matrix.target }}.zip"
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             bse-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
